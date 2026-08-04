@@ -88,4 +88,6 @@ doxygen Doxyfile
 
 To use the debugger, enable `SAVEPOINT_DEBUGGER` in CMake and integrate [imgui.hpp](include/savepoint/imgui.hpp) into your application
 
-![](image.png)
+![](doc/image1.png)
+![](doc/image2.png)
+> Integrated in the [Asteroids](examples/13_asteroids.cpp) example

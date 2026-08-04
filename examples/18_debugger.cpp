@@ -263,7 +263,7 @@ int main(int argc, char** argv)
         ImGui::SetNextWindowPos(viewport->WorkPos);
         ImGui::SetNextWindowSize(viewport->WorkSize);
         ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus;
-        if (ImGui::Begin("18_debugger", nullptr, flags))
+        if (ImGui::Begin("18_SavepointDebugger", nullptr, flags))
         {
             debugger.Render(savepoint);
         }

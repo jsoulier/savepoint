@@ -1,8 +1,11 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <glm/glm.hpp>
+#include <imgui.h>
+#include <imgui_impl_sdl3.h>
+#include <imgui_impl_sdlrenderer3.h>
 
-#include <savepoint/savepoint.hpp>
+#include <savepoint/imgui.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -22,6 +25,12 @@ static glm::vec2 Offset(glm::vec2 a, glm::vec2 b);
 static float RandomFloat();
 static int RandomInt();
 static void Lines(const std::vector<glm::vec2>& points, glm::vec2 position, float rotation);
+
+void Visit(SavepointVisitor& visitor, glm::vec2& vector)
+{
+    visitor(vector.x);
+    visitor(vector.y);
+}
 
 struct Entity
 {
@@ -253,10 +262,14 @@ struct State
     }
 };
 
+SAVEPOINT_TYPE(State);
+
 static SDL_Window* window;
 static SDL_Renderer* renderer;
 static Savepoint savepoint;
 static State state;
+static SavepointDebugger debugger;
+static bool showDebugger = false;
 
 static void Wrap(glm::vec2& position)
 {
@@ -352,6 +365,13 @@ static void Save()
 {
     savepoint.Write(state);
     savepoint.Save();
+    debugger.Refresh();
+}
+
+static void Load()
+{
+    savepoint.Read(state);
+    debugger.Refresh();
 }
 
 static void Update(float deltaTime)
@@ -429,7 +449,7 @@ static void Draw()
     Text(20.0f, 18.0f, std::format("SCORE {:06}", state.Score), 1.5f);
     CenteredText(18.0f, std::format("WAVE {}", state.Round), 1.5f);
     Text(20.0f, 52.0f, std::format("LIVES {}", player.Lives), 1.0f);
-    Text(20.0f, kHeight - 28.0f, "A/D TURN  W ACCELERATE  SPACE FIRE  F5 SAVE  F9 LOAD  N NEW", 1.0f);
+    Text(20.0f, kHeight - 28.0f, "A/D TURN  W ACCELERATE  SPACE FIRE  F5 SAVE  F9 LOAD  N NEW  F10 DEBUG", 1.0f);
     if (player.Lives == 0)
     {
         SDL_FRect rect{0.0f, 0.0f, kWidth, kHeight};
@@ -439,7 +459,26 @@ static void Draw()
         CenteredText(250.0f, "GAME OVER", 3.0f);
         CenteredText(315.0f, "N FOR NEW GAME", 1.0f);
     }
-    SDL_RenderPresent(renderer);
+}
+
+static void DrawDebugger()
+{
+    ImGui_ImplSDLRenderer3_NewFrame();
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->WorkPos);
+    ImGui::SetNextWindowSize(viewport->WorkSize);
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus;
+    if (ImGui::Begin("13_SavepointDebugger", &showDebugger, flags))
+    {
+        debugger.Render(savepoint);
+    }
+    ImGui::End();
+    ImGui::Render();
+    SDL_SetRenderLogicalPresentation(renderer, 0, 0, SDL_LOGICAL_PRESENTATION_DISABLED);
+    ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
+    SDL_SetRenderLogicalPresentation(renderer, kWidth, kHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);
 }
 
 int main(int argc, char** argv)
@@ -449,13 +488,17 @@ int main(int argc, char** argv)
     SDL_CreateWindowAndRenderer("Asteroids", kWidth, kHeight, SDL_WINDOW_RESIZABLE, &window, &renderer);
     SDL_SetRenderLogicalPresentation(renderer, kWidth, kHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);
     SDL_SetRenderVSync(renderer, 1);
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
+    ImGui_ImplSDLRenderer3_Init(renderer);
     switch (savepoint.Open(SavepointDriver::SQLite3, "asteroids.sqlite3", SavepointVersion{}))
     {
     case SavepointStatus::New:
         Restart();
         break;
     case SavepointStatus::Existing:
-        savepoint.Read(state);
+        Load();
         break;
     }
     uint64_t ticks1 = SDL_GetTicks();
@@ -465,6 +508,7 @@ int main(int argc, char** argv)
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
+            ImGui_ImplSDL3_ProcessEvent(&event);
             switch (event.type)
             {
             case SDL_EVENT_QUIT:
@@ -480,7 +524,10 @@ int main(int argc, char** argv)
                     Save();
                     break;
                 case SDL_SCANCODE_F9:
-                    savepoint.Read(state);
+                    Load();
+                    break;
+                case SDL_SCANCODE_F10:
+                    showDebugger = !showDebugger;
                     break;
                 }
                 break;
@@ -490,6 +537,11 @@ int main(int argc, char** argv)
         Update(float(ticks2 - ticks1) / 1000.0f);
         ticks1 = ticks2;
         Draw();
+        if (showDebugger)
+        {
+            DrawDebugger();
+        }
+        SDL_RenderPresent(renderer);
     }
     Save();
     savepoint.Close();

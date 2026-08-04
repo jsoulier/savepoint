@@ -167,13 +167,18 @@ class SavepointDebugger
 {
 public:
     SavepointDebugger()
-        : Mode{SavepointDebuggerMode::Entities}
+        : Mode{SavepointDebuggerMode::Singleton}
         , CachedMode{SavepointDebuggerMode::Singleton}
         , Level{0}
         , CachedLevel{0}
         , Selected{-1}
         , Dirty{true}
     {
+    }
+
+    void Refresh()
+    {
+        Dirty = true;
     }
 
     void Render(Savepoint& savepoint)
@@ -279,19 +284,13 @@ public:
     }
 
 private:
-    void Clear()
-    {
-        Trees.clear();
-        Selected = -1;
-        CachedMode = Mode;
-        CachedLevel = Level;
-        Dirty = false;
-    }
-
     void Refresh(Savepoint& savepoint)
     {
-        Clear();
-
+        CachedMode = Mode;
+        CachedLevel = Level;
+        Selected = -1;
+        Trees.clear();
+        Dirty = false;
         std::vector<SavepointDebugNode> nodes;
         switch (Mode)
         {
