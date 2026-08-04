@@ -324,10 +324,8 @@ struct ZombieV4 : EntityV4
 template<typename InT, typename OutT = InT>
 static void ReadWrite(std::string_view name, SavepointVersion version)
 {
-    std::string path = std::string{name} + ".sqlite3";
-    std::filesystem::remove(path);
     Savepoint savepoint;
-    SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, path, version);
+    SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", version);
     assert(status == SavepointStatus::New);
     InT inEntity;
     savepoint.Write(inEntity, 0);
@@ -338,12 +336,14 @@ static void ReadWrite(std::string_view name, SavepointVersion version)
         reads++;
     }, 0);
     assert(reads == 1);
+    savepoint.Clear();
     savepoint.Close();
-    std::filesystem::remove(path);
 }
 
 int main()
 {
+    std::filesystem::remove("savepoint.sqlite3");
+
     ReadWrite<EntityV1>("upgrading_entity_v1", kVersion1);
     ReadWrite<EntityV1, EntityV2>("upgrading_entity_v1_v2", kVersion1);
     ReadWrite<EntityV1, EntityV4>("upgrading_entity_v1_v4", kVersion1);

@@ -189,7 +189,7 @@ SAVEPOINT_TYPE(Header)
 SAVEPOINT_TYPE(Level)
 SAVEPOINT_TYPE(Player)
 SAVEPOINT_TYPE(Floor)
-// Intentionally removed: SAVEPOINT_TYPE(VoxelV1)
+// Intentionally omitted: SAVEPOINT_TYPE(VoxelV1)
 SAVEPOINT_TYPE(VoxelV2)
 
 int main(int argc, char** argv)
@@ -205,9 +205,9 @@ int main(int argc, char** argv)
     ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer3_Init(renderer);
 
-    std::filesystem::remove("debugger.sqlite3");
+    std::filesystem::remove("savepoint.sqlite3");
     Savepoint savepoint;
-    savepoint.Open(SavepointDriver::SQLite3, "debugger.sqlite3", kVersion);
+    savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
     std::mt19937 random{std::random_device{}()};
     Header header;
     header.Randomize(random);

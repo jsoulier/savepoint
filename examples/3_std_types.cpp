@@ -161,7 +161,6 @@ int main()
     assert(reads == 1);
 
     savepoint.Close();
-    std::filesystem::remove("savepoint.sqlite3");
     return 0;
 }
 // [3_std_types]

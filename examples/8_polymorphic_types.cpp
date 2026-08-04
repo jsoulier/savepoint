@@ -106,11 +106,10 @@ struct ItemEntity : public Entity
 
 int main()
 {
-    static constexpr const char* kFileName = "polymorphic_types.sqlite3";
-    std::filesystem::remove(kFileName);
+    std::filesystem::remove("savepoint.sqlite3");
 
     Savepoint savepoint;
-    SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, kFileName, kVersion);
+    SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
     assert(status == SavepointStatus::New);
 
     // Write concrete derived classes as usual
@@ -153,7 +152,6 @@ int main()
     assert(reads == 4);
 
     savepoint.Close();
-    std::filesystem::remove(kFileName);
     return 0;
 }
 // [8_polymorphic_types]

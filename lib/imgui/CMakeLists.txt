@@ -1,5 +1,5 @@
 project(savepoint_imgui)
-add_library(imgui STATIC
+add_library(savepoint_imgui
     imgui.cpp
     imgui_demo.cpp
     imgui_draw.cpp
@@ -8,6 +8,6 @@ add_library(imgui STATIC
     imgui_tables.cpp
     imgui_widgets.cpp
 )
-target_include_directories(imgui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-set_target_properties(imgui PROPERTIES CXX_STANDARD 17)
-target_link_libraries(imgui PUBLIC SDL3::SDL3)
+target_include_directories(savepoint_imgui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(savepoint_imgui PROPERTIES CXX_STANDARD 23)
+target_link_libraries(savepoint_imgui PUBLIC SDL3::SDL3)

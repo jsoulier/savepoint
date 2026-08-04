@@ -112,7 +112,6 @@ int main()
     savepoint.Clear();
     assert(!savepoint.Read(tile, 1, 2, 3, 0));
     savepoint.Close();
-    std::filesystem::remove("savepoint.sqlite3");
     return 0;
 }
 // [6_spatial_types]
