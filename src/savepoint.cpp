@@ -15,7 +15,7 @@
 #include "sqlite3.hpp"
 #endif
 
-static void DefaultLogFunction(const std::string_view& string)
+static void DefaultLogFunction(std::string_view string)
 {
     std::fwrite(string.data(), sizeof(char), string.size(), stderr);
     std::fputc('\n', stderr);
@@ -28,7 +28,7 @@ void SavepointSetLogFunction(const SavepointLogFunction& function)
     logFunction = function;
 }
 
-void SavepointLog(const std::string_view& string)
+void SavepointLog(std::string_view string)
 {
     logFunction(string);
 }
@@ -51,7 +51,7 @@ struct Hash
 {
     using is_transparent = void;
 
-    size_t operator()(const std::string_view& string) const
+    size_t operator()(std::string_view string) const
     {
         return std::hash<std::string_view>{}(string);
     }
@@ -68,12 +68,12 @@ static auto& GetPolyFunctions()
     return functions;
 }
 
-void SavepointAddPolyFunction(const std::string_view& string, const SavepointPolyFunction function)
+void SavepointAddPolyFunction(std::string_view string, const SavepointPolyFunction function)
 {
     GetPolyFunctions().emplace(string, function);
 }
 
-SavepointPolyFunction SavepointGetPolyFunction(const std::string_view& string)
+SavepointPolyFunction SavepointGetPolyFunction(std::string_view string)
 {
     return GetOr<SavepointPolyFunction>(GetPolyFunctions(), string);
 }
@@ -121,7 +121,7 @@ static auto& GetDebugFunctions()
     return functions;
 }
 
-void SavepointAddDebugFunction(uint32_t id, const std::string_view& name, const SavepointDebugFunction function)
+void SavepointAddDebugFunction(uint32_t id, std::string_view name, const SavepointDebugFunction function)
 {
     GetDebugFunctions().emplace(id, DebugFunction{std::string{name}, function});
 }
@@ -144,7 +144,7 @@ Savepoint::~Savepoint()
     }
 }
 
-SavepointStatus Savepoint::Open(SavepointDriver driver, const std::string_view& path, SavepointVersion version, bool threadSafe, int maxWait)
+SavepointStatus Savepoint::Open(SavepointDriver driver, std::string_view path, SavepointVersion version, bool threadSafe, int maxWait)
 {
     switch (driver)
     {

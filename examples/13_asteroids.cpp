@@ -483,7 +483,7 @@ static void DrawDebugger()
 
 int main(int argc, char** argv)
 {
-    SavepointSetLogFunction([](const std::string_view& string) { SDL_Log("%.*s", int(string.size()), string.data()); });
+    SavepointSetLogFunction([](std::string_view string) { SDL_Log("%.*s", int(string.size()), string.data()); });
     SDL_Init(SDL_INIT_VIDEO);
     SDL_CreateWindowAndRenderer("Asteroids", kWidth, kHeight, SDL_WINDOW_RESIZABLE, &window, &renderer);
     SDL_SetRenderLogicalPresentation(renderer, kWidth, kHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);

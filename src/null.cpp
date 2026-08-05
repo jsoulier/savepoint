@@ -6,7 +6,7 @@
 
 #include "null.hpp"
 
-SavepointStatus SavepointDriverNull::Open(const std::string_view& path, bool threadSafe, int maxWait)
+SavepointStatus SavepointDriverNull::Open(std::string_view path, bool threadSafe, int maxWait)
 {
     return SavepointStatus::New;
 }

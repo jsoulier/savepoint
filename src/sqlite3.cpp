@@ -116,7 +116,7 @@ SavepointDriverSQLite3::SavepointDriverSQLite3()
 {
 }
 
-SavepointStatus SavepointDriverSQLite3::Open(const std::string_view& path, bool threadSafe, int maxWait)
+SavepointStatus SavepointDriverSQLite3::Open(std::string_view path, bool threadSafe, int maxWait)
 {
     Mutex.SetEnabled(threadSafe);
     std::scoped_lock lock{Mutex};

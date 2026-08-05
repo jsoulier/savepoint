@@ -27,7 +27,7 @@
  * 
  * @param string The log message.
  */
-using SavepointLogFunction = std::function<void(const std::string_view& string)>;
+using SavepointLogFunction = std::function<void(std::string_view string)>;
 
 /**
  * @brief Set the log function used by SavepointLog. Defaults to stderr.
@@ -41,7 +41,7 @@ void SavepointSetLogFunction(const SavepointLogFunction& function);
  * 
  * @param string The log message.
  */
-void SavepointLog(const std::string_view& string);
+void SavepointLog(std::string_view string);
 
 /**
  * @brief Used to specify a Savepoint version.
@@ -324,10 +324,10 @@ public:
 using SavepointPolyFunction = SavepointPoly*(*)();
 
 // Register a factory function for poly types
-void SavepointAddPolyFunction(const std::string_view& string, const SavepointPolyFunction function);
+void SavepointAddPolyFunction(std::string_view string, const SavepointPolyFunction function);
 
 // Get a factory function for poly types
-SavepointPolyFunction SavepointGetPolyFunction(const std::string_view& string);
+SavepointPolyFunction SavepointGetPolyFunction(std::string_view string);
 
 // Read the visitor to get the poly factory and create the poly instance
 SavepointPoly* SavepointReadPoly(SavepointVisitor& visitor);
@@ -339,7 +339,7 @@ void SavepointWritePoly(SavepointPoly* poly, SavepointVisitor& visitor);
 using SavepointDebugFunction = void(*)(SavepointVisitor& visitor);
 
 // Register a debug function. Does nothing for ID collisions
-void SavepointAddDebugFunction(uint32_t id, const std::string_view& name, const SavepointDebugFunction function);
+void SavepointAddDebugFunction(uint32_t id, std::string_view name, const SavepointDebugFunction function);
 
 // Get a debug function registered to an ID
 SavepointDebugFunction SavepointGetDebugFunction(uint32_t id);
@@ -373,7 +373,7 @@ static constexpr std::string_view SavepointTypeNameOf()
         return {};
     }
     name = name.substr(kSavepointNamePrefix, name.size() - kSavepointNamePrefix - kSavepointNameSuffix);
-    for (const std::string_view& prefix : {"class ", "struct ", "enum ", "union "})
+    for (std::string_view prefix : {"class ", "struct ", "enum ", "union "})
     {
         if (name.starts_with(prefix))
         {
@@ -480,7 +480,7 @@ template<>
 struct SavepointTypeName<std::string_view> { static constexpr std::string_view kValue = "std::string_view"; };
 
 // https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
-constexpr uint32_t SavepointTypeNameHash(const std::string_view& name)
+constexpr uint32_t SavepointTypeNameHash(std::string_view name)
 {
     uint32_t hash = 2166136261u;
     for (char c : name)
@@ -1465,7 +1465,7 @@ class ISavepointDriver
 {
 public:
     virtual ~ISavepointDriver() = default;
-    virtual SavepointStatus Open(const std::string_view& path, bool threadSafe, int maxWait) = 0;
+    virtual SavepointStatus Open(std::string_view path, bool threadSafe, int maxWait) = 0;
     virtual bool IsOpen() = 0;
     virtual void Write(const void* data, int size) = 0;
     virtual void Write(const void* data, int size, int level) = 0;
@@ -1612,7 +1612,7 @@ public:
      * @see Save
      * @see Close
      */
-    SavepointStatus Open(SavepointDriver driver, const std::string_view& path, SavepointVersion version, bool threadSafe = false, int maxWait = 0);
+    SavepointStatus Open(SavepointDriver driver, std::string_view path, SavepointVersion version, bool threadSafe = false, int maxWait = 0);
 
     /**
      * @brief Write a singleton to the Savepoint.

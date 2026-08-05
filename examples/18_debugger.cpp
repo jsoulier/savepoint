@@ -194,7 +194,7 @@ SAVEPOINT_TYPE(VoxelV2)
 
 int main(int argc, char** argv)
 {
-    SavepointSetLogFunction([](const std::string_view& string) { SDL_Log("%.*s", int(string.size()), string.data()); });
+    SavepointSetLogFunction([](std::string_view string) { SDL_Log("%.*s", int(string.size()), string.data()); });
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Window* window = SDL_CreateWindow("Savepoint Debugger", 960, 720, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);

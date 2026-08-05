@@ -15,7 +15,7 @@ class SavepointDriverSQLite3 : public ISavepointDriver
 {
 public:
     SavepointDriverSQLite3();
-    SavepointStatus Open(const std::string_view& path, bool threadSafe, int maxWait) override;
+    SavepointStatus Open(std::string_view path, bool threadSafe, int maxWait) override;
     bool IsOpen() override;
     void Write(const void* data, int size) override;
     void Write(const void* data, int size, int level) override;
