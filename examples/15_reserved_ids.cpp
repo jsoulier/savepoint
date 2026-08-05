@@ -10,12 +10,12 @@ static constexpr SavepointVersion kVersion{0, 0, 0};
 static constexpr int kPlayerID = 1001;
 static constexpr int kBossID = 1002;
 
-struct Entity
+struct Player
 {
     int Score;
 
-    Entity() = default;
-    Entity(int score)
+    Player() = default;
+    Player(int score)
         : Score{score}
     {
     }
@@ -23,6 +23,28 @@ struct Entity
     void Visit(SavepointVisitor& visitor)
     {
         visitor(Score);
+    }
+};
+
+struct Boss
+{
+    int Difficulty;
+    int Health;
+    int Attempts;
+
+    Boss() = default;
+    Boss(int difficulty, int health, int attempts)
+        : Difficulty{difficulty}
+        , Health{health}
+        , Attempts{attempts}
+    {
+    }
+
+    void Visit(SavepointVisitor& visitor)
+    {
+        visitor(Difficulty);
+        visitor(Health);
+        visitor(Attempts);
     }
 };
 
@@ -34,23 +56,28 @@ int main()
     SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
     assert(status == SavepointStatus::New);
 
-    Entity inPlayer{10};
-    Entity inBoss{20};
+    Player inPlayer{10};
+    Boss inBoss{20, 100, 1};
     savepoint.Write(inPlayer, kPlayerID);
     savepoint.Write(inBoss, kBossID);
 
-    Entity outPlayer;
+    Player outPlayer;
     assert(savepoint.Read(outPlayer, kPlayerID));
     assert(outPlayer.Score == inPlayer.Score);
 
-    Entity outBoss;
+    Boss outBoss;
     assert(savepoint.Read(outBoss, kBossID));
-    assert(outBoss.Score == inBoss.Score);
+    assert(outBoss.Difficulty == inBoss.Difficulty);
+    assert(outBoss.Health == inBoss.Health);
+    assert(outBoss.Attempts == inBoss.Attempts);
 
-    inBoss.Score = 30;
+    inBoss.Difficulty = 30;
+    inBoss.Attempts++;
     savepoint.Write(inBoss, kBossID);
     assert(savepoint.Read(outBoss, kBossID));
-    assert(outBoss.Score == inBoss.Score);
+    assert(outBoss.Difficulty == inBoss.Difficulty);
+    assert(outBoss.Health == inBoss.Health);
+    assert(outBoss.Attempts == inBoss.Attempts);
     assert(savepoint.Read(outPlayer, kPlayerID));
     assert(outPlayer.Score == inPlayer.Score);
 
