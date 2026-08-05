@@ -184,14 +184,6 @@ struct VoxelV2
     }
 };
 
-// For the time being, types must be manually defined 
-SAVEPOINT_TYPE(Header)
-SAVEPOINT_TYPE(Level)
-SAVEPOINT_TYPE(Player)
-SAVEPOINT_TYPE(Floor)
-// Intentionally omitted: SAVEPOINT_TYPE(VoxelV1)
-SAVEPOINT_TYPE(VoxelV2)
-
 int main(int argc, char** argv)
 {
     SavepointSetLogFunction([](std::string_view string) { SDL_Log("%.*s", int(string.size()), string.data()); });

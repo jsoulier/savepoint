@@ -507,38 +507,27 @@ constexpr uint32_t SavepointTypeID()
     }
 }
 
-/** @endcond */
+// For registering debug functions on instantiation of Savepoint::Read/Write
+template<typename T>
+struct SavepointDebugRegistrar
+{
+    static inline const bool kRegistered = []
+    {
+        static_assert(std::is_default_constructible_v<T>);
+        SavepointAddDebugFunction(
+            SavepointTypeID<T>(),
+            SavepointTypeName<T>::kValue,
+            [](SavepointVisitor& visitor)
+            {
+                T item{};
+                visitor(item);
+            }
+        );
+        return true;
+    }();
+};
 
-/**
- * @brief Register a type so that Savepoint can deserialize it for debugging.
- * 
- * Savepoint works by forcing the user to provide a type for reads/writes. Since the
- * schema is built directly into the type, we need that type to visualize the contents of
- * the database (unless you wanted to read binary). As such, you must (currently) register
- * your types. 
- * 
- * The type's name is hashed and stored in the visitor as a key. If the type's name changes,
- * you can keep it backwards compatible by overriding SavepointTypeName. 
- *
- * template<>
- * struct SavepointTypeName<PlayerButWithACharacterSuffix>
- * {
- *     static constexpr std::string_view kValue = "Player";
- * };
- *
- * @todo Delete when C++26 reflection is supported
- * @param T The class type. Must be default constructible.
- */
-#define SAVEPOINT_TYPE(T) \
-    static const bool k##T##SavepointTypeRegistrar = [] \
-    { \
-        SavepointAddDebugFunction(SavepointTypeID<T>(), SavepointTypeName<T>::kValue, [](SavepointVisitor& visitor) \
-        { \
-            T item{}; \
-            visitor(item); \
-        }); \
-        return true; \
-    }(); \
+/** @endcond */
 
 #ifdef SAVEPOINT_DEBUGGER
 
@@ -695,13 +684,29 @@ public:
     /**
      * @brief Prepare a visitor for writing to bytes.
      *
+     * The type's name is hashed and stored as its identifier. If the C++ type name
+     * changes, backwards compatibility can be preserved by specializing
+     * SavepointTypeName:
+     *
+     * @code
+     * template<>
+     * struct SavepointTypeName<PlayerButWithACharacterSuffix>
+     * {
+     *     static constexpr std::string_view kValue = "Player";
+     * };
+     * @endcode
+     *
      * @tparam T The type about to be written.
      * @param version The version of the application to be written.
      * @see SavepointTypeID
+     * @see SavepointTypeName
      */
     template<typename T>
     void Begin(SavepointVersion version)
     {
+        // C++ magic to ensure the type's debug information is registered at startup
+        SavepointDebugRegistrar<T>::kRegistered;
+
         State.Version = version;
         State.TypeID = SavepointTypeID<T>();
         State.Error = false;

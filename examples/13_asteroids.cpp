@@ -262,8 +262,6 @@ struct State
     }
 };
 
-SAVEPOINT_TYPE(State);
-
 static SDL_Window* window;
 static SDL_Renderer* renderer;
 static Savepoint savepoint;
