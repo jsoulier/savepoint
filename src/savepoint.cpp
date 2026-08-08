@@ -136,6 +136,16 @@ std::string_view SavepointGetDebugTypeName(uint32_t id)
     return GetOr<std::string_view>(GetDebugFunctions(), id, &DebugFunction::Name);
 }
 
+void SavepointVersion::Visit(SavepointVisitor& visitor)
+{
+    visitor(Value);
+}
+
+void SavepointID::Visit(SavepointVisitor& visitor)
+{
+    visitor(Value);
+}
+
 Savepoint::~Savepoint()
 {
     if (Driver && Driver->IsOpen())

@@ -3,6 +3,7 @@
 #include <savepoint/fwd.hpp>
 
 #include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -125,6 +126,13 @@ public:
      */
     constexpr auto operator<=>(const SavepointVersion& other) const = default;
 
+    /**
+     * @brief Serialize the version.
+     *
+     * @param visitor The visitor.
+     */
+    void Visit(SavepointVisitor& visitor);
+
 private:
     uint32_t Value;
 };
@@ -189,6 +197,13 @@ public:
     {
         return Value;
     }
+
+    /**
+     * @brief Serialize the ID.
+     *
+     * @param visitor The visitor.
+     */
+    void Visit(SavepointVisitor& visitor);
 
 private:
     int Value;
@@ -458,9 +473,78 @@ concept SavepointHasFreeVisit = requires(SavepointVisitor visitor, T item) { { V
 template<typename T>
 concept SavepointHasMemberVisit = requires(SavepointVisitor visitor, T item) { { item.Visit(visitor) }; };
 
-// std::memcpy
+// For ensuring compatibility across platforms
 template<typename T>
-concept SavepointIsCopyable = !SavepointIsPointer<T> && !SavepointHasFreeVisit<T> && !SavepointHasMemberVisit<T> && std::is_trivially_copyable_v<T>;
+struct SavepointPortableTypeConverter
+{
+    using Type = T;
+
+    static Type Write(T value)
+    {
+        return value;
+    }
+
+    static T Read(Type value)
+    {
+        return value;
+    }
+};
+
+// Signed integers to int64
+template<typename T> requires (std::is_integral_v<T> && std::is_signed_v<T>)
+struct SavepointPortableTypeConverter<T>
+{
+    using Type = int64_t;
+
+    static Type Write(T value)
+    {
+        return Type(value);
+    }
+
+    static T Read(Type value)
+    {
+        return T(value);
+    }
+};
+
+// Unsigned integers to uint64
+template<typename T> requires (std::is_integral_v<T> && std::is_unsigned_v<T>)
+struct SavepointPortableTypeConverter<T>
+{
+    using Type = uint64_t;
+
+    static Type Write(T value)
+    {
+        return Type(value);
+    }
+
+    static T Read(Type value)
+    {
+        return T(value);
+    }
+};
+
+// Enums to underlying integers
+template<typename T> requires std::is_enum_v<T>
+struct SavepointPortableTypeConverter<T>
+{
+    using ConverterType = SavepointPortableTypeConverter<std::underlying_type_t<T>>;
+    using Type = typename ConverterType::Type;
+
+    static Type Write(T value)
+    {
+        return ConverterType::Write(std::to_underlying(value));
+    }
+
+    static T Read(Type value)
+    {
+        return T(ConverterType::Read(value));
+    }
+};
+
+// Portable arithmetic and enum types
+template<typename T>
+concept SavepointIsCopyable = !SavepointIsPointer<T> && !SavepointHasFreeVisit<T> && !SavepointHasMemberVisit<T> && (std::is_arithmetic_v<T> || std::is_enum_v<T>);
 template<typename T>
 concept SavepointIsCopyableRange = std::ranges::contiguous_range<T> && SavepointIsCopyable<std::remove_const_t<std::ranges::range_value_t<T>>>;
 
@@ -593,6 +677,16 @@ private:
 #endif
 
 /**
+ * @brief Flags describing the visitor data.
+ */
+enum class SavepointVisitorFlags : uint32_t
+{
+    None = 0,            /**< No flags. */
+    BigEndian = 1u << 0, /**< Written on a big-endian platform. */
+    // 31 bits reserved for future use
+};
+
+/**
  * @brief Implementation of the Visitor pattern for serialization.
  *
  * The visitor is used to serialize objects. It uses a simplified version of the
@@ -601,10 +695,11 @@ private:
  * 2. Writing to the Savepoint.
  * 
  * Visitors are a structured blob of binary data. They consist of:
- * 1. A SavepointVersion representing the user's application build version.
- * 2. A SavepointVersion representing the Savepoint build version (reserved for future use).
- * 3. A u32 type hash identifying the type of the object.
- * 4. The object data.
+ * 1. SavepointVisitorFlags describing the data.
+ * 2. A SavepointVersion representing the user's application build version.
+ * 3. A SavepointVersion representing the Savepoint build version (reserved for future use).
+ * 4. A u32 type hash identifying the type of the object.
+ * 5. The object data.
  *
  * When writing, we store the current build versions. When reading, we load the
  * versions used in the previous write. By comparing these versions to the build
@@ -626,6 +721,7 @@ private:
         void Clear()
         {
             Version = {};
+            Flags = SavepointVisitorFlags::None;
             TypeID = 0;
             Error = false;
             Writer.clear();
@@ -643,6 +739,7 @@ private:
         }
 
         SavepointVersion Version;
+        SavepointVisitorFlags Flags;
         uint32_t TypeID;
         bool Error;
         std::vector<uint8_t> Writer;
@@ -708,14 +805,21 @@ public:
         SavepointDebugRegistrar<T>::kRegistered;
 
         State.Version = version;
+        State.Flags = SavepointVisitorFlags::None;
+        if (std::endian::native == std::endian::big)
+        {
+            State.Flags = SavepointVisitorFlags::BigEndian;
+        }
         State.TypeID = SavepointTypeID<T>();
         State.Error = false;
-        State.Writer.resize(sizeof(version) * 2 + sizeof(State.TypeID));
+        State.Writer.clear();
         State.Reader = {};
         State.Offset = 0;
-        std::memcpy(State.Writer.data(), &version, sizeof(version));
-        std::memcpy(State.Writer.data() + sizeof(version), &kSavepointVersion, sizeof(version));
-        std::memcpy(State.Writer.data() + sizeof(version) * 2, &State.TypeID, sizeof(State.TypeID));
+        SavepointVersion savepointVersion = kSavepointVersion;
+        operator()(State.Flags);
+        operator()(State.Version);
+        operator()(savepointVersion);
+        operator()(State.TypeID);
         State.DebugClear();
     }
 
@@ -728,13 +832,30 @@ public:
     void Begin(const void* data, int size)
     {
         State.Version = SavepointVersion{};
+        State.Flags = SavepointVisitorFlags::None;
         State.TypeID = 0;
         State.Error = false;
         State.Reader = {static_cast<uint8_t*>(const_cast<void*>(data)), size_t(size)};
         State.Writer.clear();
         State.Offset = 0;
+        using VisitorFlags = typename SavepointPortableTypeConverter<SavepointVisitorFlags>::Type;
+        if (sizeof(VisitorFlags) > size)
+        {
+            SavepointLog("Tried to read past visitor flags");
+            SetError();
+            return;
+        }
+
+        // The endianness has to be captured before all reads (include state.Flags)
+        const uint8_t* flags = State.Reader.data();
+        if ((flags[sizeof(VisitorFlags) - 1] & std::to_underlying(SavepointVisitorFlags::BigEndian)) != 0)
+        {
+            State.Flags = SavepointVisitorFlags::BigEndian;
+        }
+
+        operator()(State.Flags);
         operator()(State.Version);
-        Skip<SavepointVersion>();
+        Skip<uint32_t>(); // kSavepointVersion
         operator()(State.TypeID);
         State.DebugClear();
     }
@@ -755,6 +876,8 @@ public:
     template<SavepointIsCopyable T, typename... Args>
     void operator()(T& item, SavepointVersion version = {}, Args&&... args)
     {
+        using ConverterType = SavepointPortableTypeConverter<std::remove_cv_t<T>>;
+        using PortableType = typename ConverterType::Type;
         if (IsReading())
         {
             // Required for write-only containers (e.g. views)
@@ -774,7 +897,7 @@ public:
                     }
                     return;
                 }
-                if (sizeof(T) > GetSize())
+                if (sizeof(PortableType) > GetSize())
                 {
                     SavepointLog(std::format("Tried to read past visitor: {} -> {}", State.Version.GetString(), version.GetString()));
                     SetError();
@@ -784,8 +907,10 @@ public:
                     }
                     return;
                 }
-                std::memcpy(std::addressof(item), State.Reader.data() + State.Offset, sizeof(T));
-                State.Offset += sizeof(T);
+                PortableType value;
+                Memcpy(std::addressof(value), State.Reader.data() + State.Offset, 1, sizeof(value));
+                State.Offset += sizeof(value);
+                item = ConverterType::Read(value);
             }
         }
         else
@@ -794,13 +919,107 @@ public:
             {
                 return;
             }
-            State.Writer.resize(State.Writer.size() + sizeof(T));
-            std::memcpy(State.Writer.data() + State.Writer.size() - sizeof(T), std::addressof(item), sizeof(T));
+            PortableType value = ConverterType::Write(item);
+            State.Writer.resize(State.Writer.size() + sizeof(value));
+            Memcpy(State.Writer.data() + State.Writer.size() - sizeof(value), std::addressof(value), 1, sizeof(value));
         }
         DebugLeaf(item);
     }
 
+    /**
+     * @brief Visit a contiguous block of portable elements.
+     *
+     * @tparam T The element type.
+     * @param data The pointer to the elements.
+     * @param size The number of elements.
+     */
+    template<SavepointIsCopyable T>
+    void operator()(T* data, int size)
+    {
+        using ConverterType = SavepointPortableTypeConverter<std::remove_cv_t<T>>;
+        using PortableType = typename ConverterType::Type;
+        if (HasError())
+        {
+            return;
+        }
+        int bytes = size * sizeof(PortableType);
+        if (IsReading())
+        {
+            // Required for write-only containers (e.g. views)
+            if constexpr (std::is_const_v<T>)
+            {
+                SavepointLog("Tried to read into a const");
+                SetError();
+                return;
+            }
+            else
+            {
+                if (bytes > GetSize())
+                {
+                    SavepointLog(std::format("Tried to read past visitor: {}", State.Version.GetString()));
+                    SetError();
+                    return;
+                }
+                if (bytes)
+                {
+                    for (int i = 0; i < size; i++)
+                    {
+                        PortableType value;
+                        Memcpy(std::addressof(value), State.Reader.data() + State.Offset, 1, sizeof(value));
+                        State.Offset += sizeof(value);
+                        data[i] = ConverterType::Read(value);
+                    }
+                }
+            }
+        }
+        else
+        {
+            if (bytes)
+            {
+                State.Writer.resize(State.Writer.size() + bytes);
+                uint8_t* destination = State.Writer.data() + State.Writer.size() - bytes;
+                for (int i = 0; i < size; i++)
+                {
+                    PortableType value = ConverterType::Write(data[i]);
+                    Memcpy(destination + i * sizeof(value), std::addressof(value), 1, sizeof(value));
+                }
+            }
+        }
+#ifdef SAVEPOINT_DEBUGGER
+        if constexpr (std::is_same_v<std::remove_cv_t<T>, char>)
+        {
+            DebugLeaf(std::string_view{data, size_t(size)});
+        }
+        else
+        {
+            for (int i = 0; i < size; i++)
+            {
+                DebugLeaf(data[i]);
+            }
+        }
+#endif
+    }
+
 private:
+    // Memcpy accounts for endianness differences
+    void Memcpy(void* destination, const void* source, int elements, int size) const
+    {
+        if (GetEndianness() == std::endian::native)
+        {
+            std::memcpy(destination, source, elements * size);
+        }
+        else
+        {
+            const uint8_t* src = static_cast<const uint8_t*>(source);
+            uint8_t* dst = static_cast<uint8_t*>(destination);
+            for (int offset = 0; offset < elements * size; offset += size)
+            {
+                std::reverse_copy(src + offset, src + offset + size, dst + offset);
+            }
+        }
+    }
+
+    // Helper for SavepointVisitor::Visit and free Visit functions
     template<typename T, typename... Args>
     bool TryVisit(T& item, SavepointVersion version = {}, Args&&... args)
     {
@@ -866,68 +1085,6 @@ public:
     }
 
     /**
-     * @brief Visit a contiguous block of copyable elements.
-     *
-     * @tparam T The element type.
-     * @param data The pointer to the elements.
-     * @param size The number of elements.
-     */
-    template<SavepointIsCopyable T>
-    void operator()(T* data, int size)
-    {
-        if (HasError())
-        {
-            return;
-        }
-        int bytes = size * sizeof(T);
-        if (IsReading())
-        {
-            // Required for write-only containers (e.g. views)
-            if constexpr (std::is_const_v<T>)
-            {
-                SavepointLog("Tried to read into a const");
-                SetError();
-                return;
-            }
-            else
-            {
-                if (bytes > GetSize())
-                {
-                    SavepointLog(std::format("Tried to read past visitor: {}", State.Version.GetString()));
-                    SetError();
-                    return;
-                }
-                if (bytes)
-                {
-                    std::memcpy(data, State.Reader.data() + State.Offset, bytes);
-                    State.Offset += bytes;
-                }
-            }
-        }
-        else
-        {
-            if (bytes)
-            {
-                State.Writer.resize(State.Writer.size() + bytes);
-                std::memcpy(State.Writer.data() + State.Writer.size() - bytes, data, bytes);
-            }
-        }
-#ifdef SAVEPOINT_DEBUGGER
-        if constexpr (std::is_same_v<std::remove_cv_t<T>, char>)
-        {
-            DebugLeaf(std::string_view{data, size_t(size)});
-        }
-        else
-        {
-            for (int i = 0; i < size; i++)
-            {
-                DebugLeaf(data[i]);
-            }
-        }
-#endif
-    }
-
-    /**
      * @brief Skip bytes.
      *
      * @tparam T The type to skip.
@@ -935,23 +1092,24 @@ public:
     template<SavepointIsCopyable T>
     void Skip()
     {
+        using PortableType = typename SavepointPortableTypeConverter<std::remove_cv_t<T>>::Type;
         if (HasError())
         {
             return;
         }
         if (IsReading())
         {
-            if (sizeof(T) > GetSize())
+            if (sizeof(PortableType) > GetSize())
             {
                 SavepointLog(std::format("Tried to skip past visitor: {}", State.Version.GetString()));
                 SetError();
                 return;
             }
-            State.Offset += sizeof(T);
+            State.Offset += sizeof(PortableType);
         }
         else
         {
-            State.Writer.resize(State.Writer.size() + sizeof(T));
+            State.Writer.resize(State.Writer.size() + sizeof(PortableType));
         }
     }
 
@@ -1007,6 +1165,23 @@ public:
     SavepointVersion GetVersion() const
     {
         return State.Version;
+    }
+
+    /**
+     * @brief Get the endianness of the visitor's data.
+     *
+     * @return The endianness.
+     */
+    std::endian GetEndianness() const
+    {
+        if ((std::to_underlying(State.Flags) & std::to_underlying(SavepointVisitorFlags::BigEndian)) != 0)
+        {
+            return std::endian::big;
+        }
+        else
+        {
+            return std::endian::little;
+        }
     }
 
     /**

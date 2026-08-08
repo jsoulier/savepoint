@@ -29,6 +29,8 @@ struct NoVisit {};
 struct MemberVisit { void Visit(SavepointVisitor& visitor) {} };
 struct FreeVisit {};
 static void Visit(SavepointVisitor& visitor, FreeVisit& item) {}
+enum class SignedEnum : int8_t {};
+enum class UnsignedEnum : uint8_t {};
 
 static_assert(SavepointHasFreeVisit<FreeVisit>);
 static_assert(!SavepointHasFreeVisit<MemberVisit>);
@@ -36,6 +38,26 @@ static_assert(!SavepointHasFreeVisit<NoVisit>);
 static_assert(!SavepointHasMemberVisit<FreeVisit>);
 static_assert(SavepointHasMemberVisit<MemberVisit>);
 static_assert(!SavepointHasMemberVisit<NoVisit>);
+
+static_assert(std::is_same_v<SavepointPortableTypeConverter<int8_t>::Type, int64_t>);
+static_assert(std::is_same_v<SavepointPortableTypeConverter<int16_t>::Type, int64_t>);
+static_assert(std::is_same_v<SavepointPortableTypeConverter<int32_t>::Type, int64_t>);
+static_assert(std::is_same_v<SavepointPortableTypeConverter<int64_t>::Type, int64_t>);
+static_assert(std::is_same_v<SavepointPortableTypeConverter<uint8_t>::Type, uint64_t>);
+static_assert(std::is_same_v<SavepointPortableTypeConverter<uint16_t>::Type, uint64_t>);
+static_assert(std::is_same_v<SavepointPortableTypeConverter<uint32_t>::Type, uint64_t>);
+static_assert(std::is_same_v<SavepointPortableTypeConverter<uint64_t>::Type, uint64_t>);
+static_assert(std::is_same_v<SavepointPortableTypeConverter<bool>::Type, uint64_t>);
+static_assert(std::is_same_v<SavepointPortableTypeConverter<SignedEnum>::Type, int64_t>);
+static_assert(std::is_same_v<SavepointPortableTypeConverter<UnsignedEnum>::Type, uint64_t>);
+static_assert(std::is_same_v<SavepointPortableTypeConverter<float>::Type, float>);
+static_assert(std::is_same_v<SavepointPortableTypeConverter<double>::Type, double>);
+
+static_assert(SavepointIsCopyable<int>);
+static_assert(SavepointIsCopyable<SignedEnum>);
+static_assert(!SavepointIsCopyable<NoVisit>);
+static_assert(!SavepointIsCopyable<MemberVisit>);
+static_assert(!SavepointIsCopyable<FreeVisit>);
 
 static_assert(!SavepointIsDynamicRange<std::array<int, 1>>);
 static_assert(SavepointIsDynamicRange<std::vector<int>>);
