@@ -679,11 +679,11 @@ private:
 /**
  * @brief Flags describing the visitor data.
  */
-enum class SavepointVisitorFlags : uint32_t
+enum class SavepointVisitorFlags : uint64_t
 {
-    None = 0,            /**< No flags. */
-    BigEndian = 1u << 0, /**< Written on a big-endian platform. */
-    // 31 bits reserved for future use
+    None = 0,              /**< No flags. */
+    BigEndian = 1ull << 0, /**< Written on a big-endian platform. */
+    // 63 bits reserved for future use
 };
 
 /**
