@@ -4,7 +4,7 @@
 
 class ISavepointDriver;
 class Savepoint;
-class SavepointPoly;
+class SavepointPolymorph;
 class SavepointEntity;
 class SavepointVersion;
 class SavepointVisitor;

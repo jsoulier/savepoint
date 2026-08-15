@@ -4,7 +4,16 @@ project(savepoint)
 option(SAVEPOINT_SQLITE3 "Enable SQLite3 driver" ON)
 option(SAVEPOINT_DEBUGGER "Enable Savepoint's debugger" OFF)
 
-add_library(savepoint src/savepoint.cpp src/null.cpp src/mutex.cpp)
+add_library(savepoint
+    src/debug.cpp
+    src/id.cpp
+    src/log.cpp
+    src/mutex.cpp
+    src/null.cpp
+    src/polymorph.cpp
+    src/savepoint.cpp
+    src/version.cpp
+)
 add_library(savepoint::savepoint ALIAS savepoint)
 target_include_directories(savepoint PUBLIC include)
 if(SAVEPOINT_DEBUGGER)

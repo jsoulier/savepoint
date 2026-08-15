@@ -7,8 +7,8 @@
 
 static constexpr SavepointVersion kVersion{0, 0, 0};
 
-// Your base class inherits from SavepointPoly (and optionally SavepointEntity)
-struct Entity : SavepointPoly, SavepointEntity
+// Your base class inherits from SavepointPolymorph (and optionally SavepointEntity)
+struct Entity : SavepointPolymorph, SavepointEntity
 {
     int X = 1;
     int Y = 2;
@@ -26,7 +26,7 @@ struct Entity : SavepointPoly, SavepointEntity
     }
 };
 
-// Intermediate classes visit their own fields but do not need SAVEPOINT_POLY
+// Intermediate classes visit their own fields but do not need SAVEPOINT_POLYMORPH
 struct MobEntity : public Entity
 {
     int Health = 10;
@@ -49,8 +49,8 @@ struct MobEntity : public Entity
 
 struct ZombieEntity : public MobEntity
 {
-    // Your concrete derived classes use SAVEPOINT_POLY to implement required methods
-    SAVEPOINT_POLY(ZombieEntity);
+    // Your concrete derived classes use SAVEPOINT_POLYMORPH to implement required methods
+    SAVEPOINT_POLYMORPH(ZombieEntity);
 
     int Strength;
 
@@ -74,12 +74,12 @@ struct ZombieEntity : public MobEntity
 
 struct SkeletonEntity : public MobEntity
 {
-    SAVEPOINT_POLY(SkeletonEntity);
+    SAVEPOINT_POLYMORPH(SkeletonEntity);
 };
 
 struct SpiderEntity : public MobEntity
 {
-    SAVEPOINT_POLY(SpiderEntity);
+    SAVEPOINT_POLYMORPH(SpiderEntity);
 
     int Eyes = 8;
     int Legs = 8;
@@ -101,7 +101,7 @@ struct SpiderEntity : public MobEntity
 
 struct ItemEntity : public Entity
 {
-    SAVEPOINT_POLY(ItemEntity);
+    SAVEPOINT_POLYMORPH(ItemEntity);
 };
 
 int main()
