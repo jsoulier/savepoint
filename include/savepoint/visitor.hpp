@@ -625,6 +625,10 @@ public:
     void DebugPush(T& item)
     {
 #ifdef SAVEPOINT_DEBUGGER
+        if (IsWriting())
+        {
+            return;
+        }
         SavepointDebugNode node;
         node.Depth = State.Depth;
         if constexpr (std::is_base_of_v<SavepointPolymorph, T>)
@@ -646,6 +650,10 @@ public:
     void DebugPop()
     {
 #ifdef SAVEPOINT_DEBUGGER
+        if (IsWriting())
+        {
+            return;
+        }
         State.Depth--;
 #endif
     }
@@ -660,6 +668,10 @@ public:
     void DebugLeaf(const T& item)
     {
 #ifdef SAVEPOINT_DEBUGGER
+        if (IsWriting())
+        {
+            return;
+        }
         SavepointDebugNode node;
         node.Depth = State.Depth;
         node.Type = SavepointTypeName<T>::kValue;

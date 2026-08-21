@@ -144,6 +144,11 @@ SavepointStatus SavepointDriverSQLite3::Open(std::string_view path, bool threadS
         SavepointLog(std::format("Failed to enable WAL: {}", sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
     }
+    if (sqlite3_exec(Handle, "PRAGMA wal_autocheckpoint=4000;", nullptr, nullptr, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to set wal_autocheckpoint: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
     if (sqlite3_exec(Handle, kSQL, nullptr, nullptr, nullptr) != SQLITE_OK)
     {
         SavepointLog(std::format("Failed to execute kSQL: {}", sqlite3_errmsg(Handle)));
