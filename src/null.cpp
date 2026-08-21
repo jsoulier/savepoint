@@ -13,15 +13,17 @@ SavepointStatus SavepointDriverNull::Open(std::string_view path, bool threadSafe
 
 bool SavepointDriverNull::IsOpen()
 {
+    return true;
+}
+
+bool SavepointDriverNull::Write(const void* data, int size)
+{
     return false;
 }
 
-void SavepointDriverNull::Write(const void* data, int size)
+bool SavepointDriverNull::Write(const void* data, int size, int level)
 {
-}
-
-void SavepointDriverNull::Write(const void* data, int size, int level)
-{
+    return false;
 }
 
 int SavepointDriverNull::Insert(const void* data, int size, int level)
@@ -34,12 +36,14 @@ bool SavepointDriverNull::Update(const void* data, int size, int id, int level)
     return false;
 }
 
-void SavepointDriverNull::Write(const void* data, int size, int x, int y, int level)
+bool SavepointDriverNull::Write(const void* data, int size, int x, int y, int level)
 {
+    return false;
 }
 
-void SavepointDriverNull::Write(const void* data, int size, int x, int y, int z, int level)
+bool SavepointDriverNull::Write(const void* data, int size, int x, int y, int z, int level)
 {
+    return false;
 }
 
 void SavepointDriverNull::Read(const SavepointReadDataFunction& function)

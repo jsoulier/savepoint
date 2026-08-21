@@ -7,6 +7,7 @@
 #include <savepoint/id.hpp>
 #include <savepoint/log.hpp>
 #include <savepoint/polymorph.hpp>
+#include <savepoint/profile.hpp>
 #include <savepoint/std.hpp>
 #include <savepoint/traits.hpp>
 #include <savepoint/version.hpp>
@@ -152,22 +153,24 @@ public:
      * 
      * @tparam T The type to write.
      * @param item The item to write.
+     * @return True if the item was written.
      */
     template<SavepointIsVisitable T>
-    void Write(T& item)
+    bool Write(T& item)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
-            return;
+            return false;
         }
         SavepointVisitor visitor;
-        visitor.Begin<T>(Version);
-        visitor(item);
+        visitor.Begin(item, Version);
         if (visitor.HasError())
         {
-            return;
+            SavepointLog("Failed to write singleton");
+            return false;
         }
-        Driver->Write(visitor.GetData(), visitor.GetSize());
+        return Driver->Write(visitor.GetData(), visitor.GetSize());
     }
 
     /**
@@ -179,23 +182,25 @@ public:
      * @tparam T The type to write.
      * @param item The item to write.
      * @param level The level.
+     * @return True if the item was written.
      * @snippet examples/15_reserved_ids.cpp 15_reserved_ids
      */
     template<SavepointIsVisitable T> requires (!SavepointIsEntity<T>)
-    void Write(T& item, int level)
+    bool Write(T& item, int level)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
-            return;
+            return false;
         }
         SavepointVisitor visitor;
-        visitor.Begin<T>(Version);
-        visitor(item);
+        visitor.Begin(item, Version);
         if (visitor.HasError())
         {
-            return;
+            SavepointLog(std::format("Failed to write singleton: level={}", level));
+            return false;
         }
-        Driver->Write(visitor.GetData(), visitor.GetSize(), level);
+        return Driver->Write(visitor.GetData(), visitor.GetSize(), level);
     }
 
     /**
@@ -209,18 +214,19 @@ public:
      * @tparam T The type to write.
      * @param item The item to write.
      * @param level The level.
+     * @return True if the entity was written. 
      * @see SavepointEntity
      */
     template<SavepointIsEntity T>
-    void Write(T& item, int level)
+    bool Write(T& item, int level)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
-            return;
+            return false;
         }
         SavepointVisitor visitor;
-        visitor.Begin<T>(Version);
-        visitor(item);
+        visitor.Begin(item, Version);
         SavepointID& id = GetID(item);
         if (visitor.HasError())
         {
@@ -232,7 +238,7 @@ public:
             {
                 SavepointLog(std::format("Failed to write entity: level={}", level));
             }
-            return;
+            return false;
         }
         if (!id.IsValid())
         {
@@ -244,6 +250,12 @@ public:
             // Update failed so try inserting
             id.Value = Driver->Insert(visitor.GetData(), visitor.GetSize(), level);
         }
+        if (!id.IsValid())
+        {
+            SavepointLog(std::format("Failed to write entity: level={}", level));
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -257,23 +269,24 @@ public:
      * @param x The x location.
      * @param y The y location.
      * @param level The level.
+     * @return True if the tile was written.
      */
     template<SavepointIsVisitable T>
-    void Write(T& item, int x, int y, int level)
+    bool Write(T& item, int x, int y, int level)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
-            return;
+            return false;
         }
         SavepointVisitor visitor;
-        visitor.Begin<T>(Version);
-        visitor(item);
+        visitor.Begin(item, Version);
         if (visitor.HasError())
         {
             SavepointLog(std::format("Failed to write tile: x={}, y={}, level={}", x, y, level));
-            return;
+            return false;
         }
-        Driver->Write(visitor.GetData(), visitor.GetSize(), x, y, level);
+        return Driver->Write(visitor.GetData(), visitor.GetSize(), x, y, level);
     }
 
     /**
@@ -288,23 +301,24 @@ public:
      * @param y The y location.
      * @param z The z location.
      * @param level The level.
+     * @return True if the tile was written.
      */
     template<SavepointIsVisitable T>
-    void Write(T& item, int x, int y, int z, int level)
+    bool Write(T& item, int x, int y, int z, int level)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
-            return;
+            return false;
         }
         SavepointVisitor visitor;
-        visitor.Begin<T>(Version);
-        visitor(item);
+        visitor.Begin(item, Version);
         if (visitor.HasError())
         {
             SavepointLog(std::format("Failed to write tile: x={}, y={}, z={}, level={}", x, y, z, level));
-            return;
+            return false;
         }
-        Driver->Write(visitor.GetData(), visitor.GetSize(), x, y, z, level);
+        return Driver->Write(visitor.GetData(), visitor.GetSize(), x, y, z, level);
     }
 
     /**
@@ -317,29 +331,24 @@ public:
     template<SavepointIsVisitable T>
     bool Read(T& item)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
             return false;
         }
         SavepointVisitor visitor;
-        bool exists = false;
-        Driver->Read([&visitor,&item, &exists](const void* data, int size)
+        bool success = false;
+        Driver->Read([&visitor,&item, &success](const void* data, int size)
         {
-            visitor.Begin(data, size);
-            visitor(item);
-            if (!visitor.IsEmpty())
-            {
-                SavepointLog("Visitor has unread data");
-                visitor.SetError();
-            }
-            exists = true;
+            visitor.Begin(data, size, item);
+            success = true;
         });
         if (visitor.HasError())
         {
             SavepointLog("Failed to read singleton");
             return false;
         }
-        return exists;
+        return success;
     }
 
     /**
@@ -354,29 +363,24 @@ public:
     template<SavepointIsVisitable T> requires (!SavepointIsEntity<T>)
     bool Read(T& item, int level)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
             return false;
         }
         SavepointVisitor visitor;
-        bool exists = false;
-        Driver->Read([&visitor,&item, &exists](const void* data, int size)
+        bool success = false;
+        Driver->Read([&visitor,&item, &success](const void* data, int size)
         {
-            visitor.Begin(data, size);
-            visitor(item);
-            if (!visitor.IsEmpty())
-            {
-                SavepointLog("Visitor has unread data");
-                visitor.SetError();
-            }
-            exists = true;
+            visitor.Begin(data, size, item);
+            success = true;
         }, level);
         if (visitor.HasError())
         {
             SavepointLog(std::format("Failed to read singleton: level={}", level));
             return false;
         }
-        return exists;
+        return success;
     }
 
     /**
@@ -390,6 +394,7 @@ public:
     template<SavepointIsVisitable T>
     void Read(const SavepointReadEntityFunction<T>& function, int level)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
             return;
@@ -398,13 +403,7 @@ public:
         Driver->Read([&visitor,&function, level](const void* data, int size, int id)
         {
             T item;
-            visitor.Begin(data, size);
-            visitor(item);
-            if (!visitor.IsEmpty())
-            {
-                SavepointLog("Visitor has unread data");
-                visitor.SetError();
-            }
+            visitor.Begin(data, size, item);
             if (visitor.HasError())
             {
                 SavepointLog(std::format("Failed to read entity: id={}, level={}", id, level));
@@ -425,6 +424,7 @@ public:
     template<SavepointIsVisitable T>
     void Read(const SavepointReadTile2DFunction<T>& function, int level)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
             return;
@@ -433,13 +433,7 @@ public:
         Driver->Read([&visitor,&function, level](const void* data, int size, int x, int y)
         {
             T item;
-            visitor.Begin(data, size);
-            visitor(item);
-            if (!visitor.IsEmpty())
-            {
-                SavepointLog("Visitor has unread data");
-                visitor.SetError();
-            }
+            visitor.Begin(data, size, item);
             if (visitor.HasError())
             {
                 SavepointLog(std::format("Failed to read tile: x={}, y={}, level={}", x, y, level));
@@ -459,6 +453,7 @@ public:
     template<SavepointIsVisitable T>
     void Read(const SavepointReadTile3DFunction<T>& function, int level)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
             return;
@@ -467,13 +462,7 @@ public:
         Driver->Read([&visitor,&function, level](const void* data, int size, int x, int y, int z)
         {
             T item;
-            visitor.Begin(data, size);
-            visitor(item);
-            if (!visitor.IsEmpty())
-            {
-                SavepointLog("Visitor has unread data");
-                visitor.SetError();
-            }
+            visitor.Begin(data, size, item);
             if (visitor.HasError())
             {
                 SavepointLog(std::format("Failed to read tile: x={}, y={}, z={}, level={}", x, y, z, level));
@@ -496,29 +485,24 @@ public:
     template<SavepointIsVisitable T>
     bool Read(T& tile, int x, int y, int level)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
             return false;
         }
         SavepointVisitor visitor;
-        bool exists = false;
-        Driver->Read([&visitor,&tile, &exists](const void* data, int size)
+        bool success = false;
+        Driver->Read([&visitor,&tile, &success](const void* data, int size)
         {
-            visitor.Begin(data, size);
-            visitor(tile);
-            if (!visitor.IsEmpty())
-            {
-                SavepointLog("Visitor has unread data");
-                visitor.SetError();
-            }
-            exists = true;
+            visitor.Begin(data, size, tile);
+            success = true;
         }, level, x, y);
         if (visitor.HasError())
         {
             SavepointLog(std::format("Failed to read tile: x={}, y={}, level={}", x, y, level));
-            exists = false;
+            success = false;
         }
-        return exists;
+        return success;
     }
 
     /**
@@ -535,29 +519,24 @@ public:
     template<SavepointIsVisitable T>
     bool Read(T& tile, int x, int y, int z, int level)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
             return false;
         }
         SavepointVisitor visitor;
-        bool exists = false;
-        Driver->Read([&visitor,&tile, &exists](const void* data, int size)
+        bool success = false;
+        Driver->Read([&visitor,&tile, &success](const void* data, int size)
         {
-            visitor.Begin(data, size);
-            visitor(tile);
-            if (!visitor.IsEmpty())
-            {
-                SavepointLog("Visitor has unread data");
-                visitor.SetError();
-            }
-            exists = true;
+            visitor.Begin(data, size, tile);
+            success = true;
         }, level, x, y, z);
         if (visitor.HasError())
         {
             SavepointLog(std::format("Failed to read tile: x={}, y={}, z={}, level={}", x, y, z, level));
-            exists = false;
+            success = false;
         }
-        return exists;
+        return success;
     }
 
     /**
@@ -567,6 +546,7 @@ public:
      */
     std::vector<int> GetLevels()
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
             return {};
@@ -589,6 +569,7 @@ public:
     template<SavepointIsEntity T>
     void Delete(T& item)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
             return;
@@ -635,6 +616,7 @@ public:
      */
     bool ReadDebug(std::vector<SavepointDebugNode>& nodes)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         return ReadDebugInternal(nodes, [this](const SavepointReadDataFunction& function)
         {
             Driver->Read(function);
@@ -650,6 +632,7 @@ public:
      */
     bool ReadDebug(std::vector<SavepointDebugNode>& nodes, int level)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         return ReadDebugInternal(nodes, [this, level](const SavepointReadDataFunction& function)
         {
             Driver->Read(function, level);
@@ -664,6 +647,7 @@ public:
      */
     void ReadDebug(const SavepointDebugEntityFunction& function, int level)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
             return;
@@ -684,6 +668,7 @@ public:
      */
     void ReadDebug(const SavepointDebugTile2DFunction& function, int level)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
             return;
@@ -704,6 +689,7 @@ public:
      */
     void ReadDebug(const SavepointDebugTile3DFunction& function, int level)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         if (!Driver || !Driver->IsOpen())
         {
             return;
@@ -725,14 +711,14 @@ private:
             return false;
         }
         SavepointVisitor visitor;
-        bool exists = false;
-        read([&visitor, &nodes, &exists](const void* data, int size)
+        bool success = false;
+        read([&visitor, &nodes, &success](const void* data, int size)
         {
             visitor.Begin(data, size);
             nodes = visitor.GetDebugNodes();
-            exists = true;
+            success = true;
         });
-        return exists;
+        return success;
     }
 #endif
 

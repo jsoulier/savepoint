@@ -1,3 +1,4 @@
+#include <savepoint/profile.hpp>
 #include <savepoint/savepoint.hpp>
 
 #include <format>
@@ -20,6 +21,7 @@ Savepoint::~Savepoint()
 
 SavepointStatus Savepoint::Open(SavepointDriver driver, std::string_view path, SavepointVersion version, bool threadSafe, int maxWait)
 {
+    SAVEPOINT_PROFILE_SCOPE();
     switch (driver)
     {
     case SavepointDriver::Null:
@@ -50,6 +52,7 @@ SavepointStatus Savepoint::Open(SavepointDriver driver, std::string_view path, S
 
 void Savepoint::Close()
 {
+    SAVEPOINT_PROFILE_SCOPE();
     if (Driver && Driver->IsOpen())
     {
         Driver->Close();
@@ -58,6 +61,7 @@ void Savepoint::Close()
 
 void Savepoint::Save()
 {
+    SAVEPOINT_PROFILE_SCOPE();
     if (Driver && Driver->IsOpen())
     {
         Driver->Save();
@@ -66,6 +70,7 @@ void Savepoint::Save()
 
 void Savepoint::Clear()
 {
+    SAVEPOINT_PROFILE_SCOPE();
     if (Driver && Driver->IsOpen())
     {
         Driver->Clear();

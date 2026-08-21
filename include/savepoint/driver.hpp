@@ -32,12 +32,12 @@ public:
     virtual ~ISavepointDriver() = default;
     virtual SavepointStatus Open(std::string_view path, bool threadSafe, int maxWait) = 0;
     virtual bool IsOpen() = 0;
-    virtual void Write(const void* data, int size) = 0;
-    virtual void Write(const void* data, int size, int level) = 0;
+    virtual bool Write(const void* data, int size) = 0;
+    virtual bool Write(const void* data, int size, int level) = 0;
     virtual int Insert(const void* data, int size, int level) = 0;
     virtual bool Update(const void* data, int size, int id, int level) = 0;
-    virtual void Write(const void* data, int size, int x, int y, int level) = 0;
-    virtual void Write(const void* data, int size, int x, int y, int z, int level) = 0;
+    virtual bool Write(const void* data, int size, int x, int y, int level) = 0;
+    virtual bool Write(const void* data, int size, int x, int y, int z, int level) = 0;
     virtual void Read(const SavepointReadDataFunction& function) = 0;
     virtual void Read(const SavepointReadDataFunction& function, int level) = 0;
     virtual void Read(const SavepointReadAllEntityDataFunction& function, int level) = 0;

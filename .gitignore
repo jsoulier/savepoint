@@ -1,4 +1,6 @@
+*.csv
 *.sqlite3*
-build
+*.tracy
+build*
 docs
 imgui.ini

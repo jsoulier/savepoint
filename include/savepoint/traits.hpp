@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iosfwd>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <random>
@@ -147,28 +148,35 @@ struct SavepointPortableTypeConverter
     }
 };
 
-// Signed integers to int64
-template<typename T> requires (std::is_integral_v<T> && std::is_signed_v<T>)
-struct SavepointPortableTypeConverter<T>
+// For mapping integral types to a fixed width
+template<typename T>
+struct SavepointFixedWidth
 {
-    using Type = int64_t;
-
-    static Type Write(T value)
-    {
-        return Type(value);
-    }
-
-    static T Read(Type value)
-    {
-        return T(value);
-    }
+    static_assert(sizeof(T) == 0, "Missing a SavepointFixedWidth specialization");
 };
 
-// Unsigned integers to uint64
-template<typename T> requires (std::is_integral_v<T> && std::is_unsigned_v<T>)
+template<> struct SavepointFixedWidth<bool> { using Type = uint8_t; };
+template<> struct SavepointFixedWidth<char> { using Type = int8_t; };
+template<> struct SavepointFixedWidth<signed char> { using Type = int8_t; };
+template<> struct SavepointFixedWidth<unsigned char> { using Type = uint8_t; };
+template<> struct SavepointFixedWidth<char8_t> { using Type = uint8_t; };
+template<> struct SavepointFixedWidth<short> { using Type = int16_t; };
+template<> struct SavepointFixedWidth<unsigned short> { using Type = uint16_t; };
+template<> struct SavepointFixedWidth<char16_t> { using Type = uint16_t; };
+template<> struct SavepointFixedWidth<int> { using Type = int32_t; };
+template<> struct SavepointFixedWidth<unsigned int> { using Type = uint32_t; };
+template<> struct SavepointFixedWidth<char32_t> { using Type = uint32_t; };
+template<> struct SavepointFixedWidth<wchar_t> { using Type = uint32_t; };
+template<> struct SavepointFixedWidth<long> { using Type = int64_t; };
+template<> struct SavepointFixedWidth<unsigned long> { using Type = uint64_t; };
+template<> struct SavepointFixedWidth<long long> { using Type = int64_t; };
+template<> struct SavepointFixedWidth<unsigned long long> { using Type = uint64_t; };
+
+// Integers to their fixed-width equivalent
+template<typename T> requires std::is_integral_v<T>
 struct SavepointPortableTypeConverter<T>
 {
-    using Type = uint64_t;
+    using Type = typename SavepointFixedWidth<T>::Type;
 
     static Type Write(T value)
     {

@@ -4,6 +4,7 @@
 #include <savepoint/fwd.hpp>
 #include <savepoint/log.hpp>
 #include <savepoint/polymorph.hpp>
+#include <savepoint/profile.hpp>
 #include <savepoint/traits.hpp>
 #include <savepoint/version.hpp>
 
@@ -24,11 +25,11 @@
 /**
  * @brief Flags describing the visitor data.
  */
-enum class SavepointVisitorFlags : uint64_t
+enum class SavepointVisitorFlags : uint32_t
 {
-    None = 0,              /**< No flags. */
-    BigEndian = 1ull << 0, /**< Written on a big-endian platform. */
-    // 63 bits reserved for future use
+    None = 0,             /**< No flags. */
+    BigEndian = 1u << 0,  /**< Written on a big-endian platform. */
+    // 31 bits reserved for future use
 };
 
 /**
@@ -139,18 +140,20 @@ public:
      * @endcode
      *
      * @tparam T The type about to be written.
+     * @param item The item to write.
      * @param version The version of the application to be written.
      * @see SavepointTypeID
      * @see SavepointTypeName
      */
     template<typename T>
-    void Begin(SavepointVersion version)
+    void Begin(T& item, SavepointVersion version)
     {
 #ifdef SAVEPOINT_DEBUGGER
         // C++ magic to ensure the type's debug information is registered at startup
         SavepointDebugRegistrar<T>::kRegistered;
 #endif
 
+        SAVEPOINT_PROFILE_SCOPE();
         State.Version = version;
         State.Flags = SavepointVisitorFlags::None;
         if (std::endian::native == std::endian::big)
@@ -168,16 +171,20 @@ public:
         operator()(savepointVersion);
         operator()(State.TypeID);
         State.DebugClear();
+        operator()(item);
     }
 
     /**
      * @brief Prepare a visitor for reading from bytes.
+     *
+     * Reads the header only. Use the overload taking an item to deserialize one.
      *
      * @param data The data as bytes.
      * @param size The number of bytes.
      */
     void Begin(const void* data, int size)
     {
+        SAVEPOINT_PROFILE_SCOPE();
         State.Version = SavepointVersion{};
         State.Flags = SavepointVisitorFlags::None;
         State.TypeID = 0;
@@ -205,6 +212,30 @@ public:
         Skip<uint32_t>(); // kSavepointVersion
         operator()(State.TypeID);
         State.DebugClear();
+    }
+
+    /**
+     * @brief Prepare a visitor for reading from bytes and deserialize the item.
+     *
+     * Sets an error if the item did not consume every byte, which means the data
+     * does not describe the type being read.
+     *
+     * @tparam T The type to read.
+     * @param data The data as bytes.
+     * @param size The number of bytes.
+     * @param item The item to read into.
+     */
+    template<typename T>
+    void Begin(const void* data, int size, T& item)
+    {
+        SAVEPOINT_PROFILE_SCOPE();
+        Begin(data, size);
+        operator()(item);
+        if (!IsEmpty())
+        {
+            SavepointLog("Visitor has unread data");
+            SetError();
+        }
     }
 
     /**
@@ -285,6 +316,7 @@ public:
     {
         using ConverterType = SavepointPortableTypeConverter<std::remove_cv_t<T>>;
         using PortableType = typename ConverterType::Type;
+        static constexpr bool kIsPortable = sizeof(PortableType) == sizeof(T);
         if (HasError())
         {
             return;
@@ -309,22 +341,34 @@ public:
                 }
                 if (bytes)
                 {
-                    for (int i = 0; i < size; i++)
+                    if constexpr (kIsPortable)
                     {
-                        PortableType value;
-                        Memcpy(std::addressof(value), State.Reader.data() + State.Offset, 1, sizeof(value));
-                        State.Offset += sizeof(value);
-                        data[i] = ConverterType::Read(value);
+                        Memcpy(data, State.Reader.data() + State.Offset, size, sizeof(PortableType));
+                        State.Offset += bytes;
+                    }
+                    else
+                    {
+                        for (int i = 0; i < size; i++)
+                        {
+                            PortableType value;
+                            Memcpy(std::addressof(value), State.Reader.data() + State.Offset, 1, sizeof(value));
+                            State.Offset += sizeof(value);
+                            data[i] = ConverterType::Read(value);
+                        }
                     }
                 }
             }
         }
-        else
+        else if (bytes)
         {
-            if (bytes)
+            State.Writer.resize(State.Writer.size() + bytes);
+            uint8_t* destination = State.Writer.data() + State.Writer.size() - bytes;
+            if constexpr (kIsPortable)
             {
-                State.Writer.resize(State.Writer.size() + bytes);
-                uint8_t* destination = State.Writer.data() + State.Writer.size() - bytes;
+                Memcpy(destination, data, size, sizeof(PortableType));
+            }
+            else
+            {
                 for (int i = 0; i < size; i++)
                 {
                     PortableType value = ConverterType::Write(data[i]);
@@ -351,7 +395,7 @@ private:
     // Memcpy accounts for endianness differences
     void Memcpy(void* destination, const void* source, int elements, int size) const
     {
-        if (GetEndianness() == std::endian::native)
+        if (size == 1 || GetEndianness() == std::endian::native)
         {
             std::memcpy(destination, source, elements * size);
         }

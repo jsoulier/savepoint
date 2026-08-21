@@ -102,4 +102,4 @@ private:
 /**
  * @brief The current savepoint version.
  */
-static constexpr SavepointVersion kSavepointVersion{0, 0, 0};
+static constexpr SavepointVersion kSavepointVersion{1, 0, 0};

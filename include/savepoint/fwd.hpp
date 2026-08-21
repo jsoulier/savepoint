@@ -9,4 +9,4 @@ class SavepointEntity;
 class SavepointVersion;
 class SavepointVisitor;
 enum class SavepointDriver : uint8_t;
-enum class SavepointVisitorFlags : uint64_t;
+enum class SavepointVisitorFlags : uint32_t;

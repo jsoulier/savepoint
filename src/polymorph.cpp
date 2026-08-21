@@ -1,5 +1,6 @@
 #include <savepoint/log.hpp>
 #include <savepoint/polymorph.hpp>
+#include <savepoint/profile.hpp>
 #include <savepoint/std.hpp>
 #include <savepoint/visitor.hpp>
 
@@ -27,6 +28,7 @@ SavepointPolymorphFunction SavepointGetPolymorphFunction(std::string_view string
 
 SavepointPolymorph* SavepointReadPolymorph(SavepointVisitor& visitor)
 {
+    SAVEPOINT_PROFILE_SCOPE();
     std::string string;
     visitor(string);
     SavepointPolymorphFunction function = SavepointGetPolymorphFunction(string);
