@@ -2,9 +2,10 @@
 #include <savepoint/savepoint.hpp>
 
 #include <algorithm>
-#include <cassert>
 #include <filesystem>
 #include <vector>
+
+#include "assert.hpp"
 
 static constexpr SavepointVersion kVersion{0, 0, 0};
 
@@ -31,7 +32,7 @@ int main()
     savepoint.Write(entity1, 2);
     std::vector<int> inLevels = {2};
     std::vector<int> outLevels = savepoint.GetLevels();
-    assert(outLevels == inLevels);
+    ASSERT(outLevels == inLevels);
 
     Entity entity2;
     Entity entity3;
@@ -40,7 +41,7 @@ int main()
     inLevels = {2, 3, 4};
     outLevels = savepoint.GetLevels();
     std::sort(outLevels.begin(), outLevels.end());
-    assert(outLevels == inLevels);
+    ASSERT(outLevels == inLevels);
 
     Tile tile;
     savepoint.Write(tile, 0, 0, 0);
@@ -53,7 +54,7 @@ int main()
     inLevels = {0, 2, 3, 4, 5, 6};
     outLevels = savepoint.GetLevels();
     std::sort(outLevels.begin(), outLevels.end());
-    assert(outLevels == inLevels);
+    ASSERT(outLevels == inLevels);
 
     savepoint.Delete(entity1);
     savepoint.Delete(entity2);
@@ -61,7 +62,7 @@ int main()
     inLevels = {0, 4, 5, 6};
     outLevels = savepoint.GetLevels();
     std::sort(outLevels.begin(), outLevels.end());
-    assert(outLevels == inLevels);
+    ASSERT(outLevels == inLevels);
 
     savepoint.Close();
     return 0;

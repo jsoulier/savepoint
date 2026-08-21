@@ -1,11 +1,12 @@
 // [17_concurrency]
 #include <savepoint/savepoint.hpp>
 
-#include <cassert>
 #include <barrier>
 #include <filesystem>
 #include <thread>
 #include <vector>
+
+#include "assert.hpp"
 
 static constexpr SavepointVersion kVersion{0, 0, 0};
 static constexpr int kThreadCount = 32;
@@ -33,7 +34,7 @@ int main()
 
     Savepoint savepoint;
     SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
-    assert(status == SavepointStatus::New);
+    ASSERT(status == SavepointStatus::New);
     for (int id = 0; id < kThreadCount; id++)
     {
         Entity entity{id, id * 100};
@@ -50,7 +51,7 @@ int main()
         {
             Savepoint savepoint;
             SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion, false, kMaxWait);
-            assert(status == SavepointStatus::Existing);
+            ASSERT(status == SavepointStatus::Existing);
 
             barrier.arrive_and_wait();
             for (int iteration = 0; iteration < kIterationCount; iteration++)
@@ -59,9 +60,9 @@ int main()
                 savepoint.Write(inEntity, id);
 
                 Entity outEntity;
-                assert(savepoint.Read(outEntity, id));
-                assert(outEntity.ID == inEntity.ID);
-                assert(outEntity.Score == inEntity.Score);
+                ASSERT(savepoint.Read(outEntity, id));
+                ASSERT(outEntity.ID == inEntity.ID);
+                ASSERT(outEntity.Score == inEntity.Score);
             }
             savepoint.Save();
             savepoint.Close();
@@ -74,13 +75,13 @@ int main()
     }
 
     status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
-    assert(status == SavepointStatus::Existing);
+    ASSERT(status == SavepointStatus::Existing);
     for (int id = 0; id < kThreadCount; id++)
     {
         Entity entity;
-        assert(savepoint.Read(entity, id));
-        assert(entity.ID == id);
-        assert(entity.Score == id * 1000 + kIterationCount - 1);
+        ASSERT(savepoint.Read(entity, id));
+        ASSERT(entity.ID == id);
+        ASSERT(entity.Score == id * 1000 + kIterationCount - 1);
     }
 
     savepoint.Close();

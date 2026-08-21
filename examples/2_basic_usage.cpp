@@ -1,8 +1,9 @@
 // [2_basic_usage]
 #include <savepoint/savepoint.hpp>
 
-#include <cassert>
 #include <filesystem>
+
+#include "assert.hpp"
 
 // The version of your application
 static constexpr SavepointVersion kVersion{0, 0, 0};
@@ -66,10 +67,10 @@ int main()
     int reads = 0;
     savepoint.Read<Entity>([&](Entity& outEntity)
     {
-        assert(outEntity == inEntity);
+        ASSERT(outEntity == inEntity);
         reads++;
     }, 0);
-    assert(reads == 1);
+    ASSERT(reads == 1);
 
     // Commit the transaction and start a new one. Savepoint::Open will now return Existing instead of New
     savepoint.Save();

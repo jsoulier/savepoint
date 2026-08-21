@@ -1,7 +1,7 @@
 // [9_version]
 #include <savepoint/savepoint.hpp>
 
-#include <cassert>
+#include "assert.hpp"
 
 int main()
 {
@@ -20,7 +20,7 @@ int main()
     static_assert(kVersion <= SavepointVersion{1, 2, 3});
     static_assert(kVersion >= SavepointVersion{1, 2, 3});
 
-    assert(kVersion.GetString() == "1.2.3");
+    ASSERT(kVersion.GetString() == "1.2.3");
     return 0;
 }
 // [9_version]

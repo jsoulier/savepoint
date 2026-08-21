@@ -1,9 +1,10 @@
 // [6_spatial_types]
 #include <savepoint/savepoint.hpp>
 
-#include <cassert>
 #include <filesystem>
 #include <random>
+
+#include "assert.hpp"
 
 static constexpr SavepointVersion kVersion{0, 0, 0};
 
@@ -41,7 +42,7 @@ int main()
 
     Savepoint savepoint;
     SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
-    assert(status == SavepointStatus::New);
+    ASSERT(status == SavepointStatus::New);
 
     std::random_device device;
     std::mt19937 generator(device());
@@ -61,30 +62,30 @@ int main()
     int reads = 0;
     savepoint.Read<Tile>([&](Tile& outTile, int x, int y)
     {
-        assert(outTile == inTiles[x][y]);
+        ASSERT(outTile == inTiles[x][y]);
         reads++;
     }, 0);
-    assert(reads == 32 * 32);
+    ASSERT(reads == 32 * 32);
 
     for (int x = 0; x < 32; x++)
     for (int y = 0; y < 32; y++)
     {
         Tile tile;
-        assert(savepoint.Read(tile, x, y, 0));
-        assert(tile.X == x);
-        assert(tile.Y == y);
-        assert(tile.Z == 0);
+        ASSERT(savepoint.Read(tile, x, y, 0));
+        ASSERT(tile.X == x);
+        ASSERT(tile.Y == y);
+        ASSERT(tile.Z == 0);
     }
 
     Tile overwritten{TileTypeStone, 10, 20, 0};
     savepoint.Write(overwritten, 10, 20, 0);
     Tile tile;
-    assert(savepoint.Read(tile, 10, 20, 0));
-    assert(tile == overwritten);
-    assert(!savepoint.Read(tile, -1, -1, 0));
+    ASSERT(savepoint.Read(tile, 10, 20, 0));
+    ASSERT(tile == overwritten);
+    ASSERT(!savepoint.Read(tile, -1, -1, 0));
 
     savepoint.Clear();
-    assert(!savepoint.Read(tile, 10, 20, 0));
+    ASSERT(!savepoint.Read(tile, 10, 20, 0));
 
     for (int x = 0; x < 8; x++)
     for (int y = 0; y < 8; y++)
@@ -97,20 +98,20 @@ int main()
     reads = 0;
     savepoint.Read<Tile>([&](Tile& outTile, int x, int y, int z)
     {
-        assert(outTile.Type == TileType((x + y + z) % 3));
-        assert(outTile.X == x);
-        assert(outTile.Y == y);
-        assert(outTile.Z == z);
+        ASSERT(outTile.Type == TileType((x + y + z) % 3));
+        ASSERT(outTile.X == x);
+        ASSERT(outTile.Y == y);
+        ASSERT(outTile.Z == z);
         reads++;
     }, 0);
-    assert(reads == 8 * 8 * 8);
-    assert(savepoint.Read(tile, 1, 2, 3, 0));
+    ASSERT(reads == 8 * 8 * 8);
+    ASSERT(savepoint.Read(tile, 1, 2, 3, 0));
     Tile expected{TileTypeGrass, 1, 2, 3};
-    assert(tile == expected);
-    assert(!savepoint.Read(tile, -1, -1, -1, 0));
+    ASSERT(tile == expected);
+    ASSERT(!savepoint.Read(tile, -1, -1, -1, 0));
 
     savepoint.Clear();
-    assert(!savepoint.Read(tile, 1, 2, 3, 0));
+    ASSERT(!savepoint.Read(tile, 1, 2, 3, 0));
     savepoint.Close();
     return 0;
 }

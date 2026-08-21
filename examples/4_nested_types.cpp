@@ -1,10 +1,11 @@
 // [4_nested_types]
 #include <savepoint/savepoint.hpp>
 
-#include <cassert>
 #include <filesystem>
 #include <unordered_set>
 #include <vector>
+
+#include "assert.hpp"
 
 static constexpr SavepointVersion kVersion{0, 0, 0};
 
@@ -123,7 +124,7 @@ int main()
     savepoint.Write(inEntity, 0);
     savepoint.Read<Entity>([&](Entity& outEntity)
     {
-        assert(outEntity == inEntity);
+        ASSERT(outEntity == inEntity);
     }, 0);
 
     savepoint.Close();

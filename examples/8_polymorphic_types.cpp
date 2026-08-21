@@ -1,9 +1,10 @@
 // [8_polymorphic_types]
 #include <savepoint/savepoint.hpp>
 
-#include <cassert>
 #include <filesystem>
 #include <memory>
+
+#include "assert.hpp"
 
 static constexpr SavepointVersion kVersion{0, 0, 0};
 
@@ -110,7 +111,7 @@ int main()
 
     Savepoint savepoint;
     SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
-    assert(status == SavepointStatus::New);
+    ASSERT(status == SavepointStatus::New);
 
     // Write concrete derived classes as usual
     std::shared_ptr<ItemEntity> inItem = std::make_shared<ItemEntity>();
@@ -129,27 +130,27 @@ int main()
         // The concrete type is restored, so the base pointer can safely be cast back
         if (ItemEntity* outItem = dynamic_cast<ItemEntity*>(entity.get()))
         {
-            assert(*outItem == *inItem);
+            ASSERT(*outItem == *inItem);
         }
         else if (ZombieEntity* outZombie = dynamic_cast<ZombieEntity*>(entity.get()))
         {
-            assert(*outZombie == *inZombie);
+            ASSERT(*outZombie == *inZombie);
         }
         else if (SkeletonEntity* outSkeleton = dynamic_cast<SkeletonEntity*>(entity.get()))
         {
-            assert(*outSkeleton == *inSkeleton);
+            ASSERT(*outSkeleton == *inSkeleton);
         }
         else if (SpiderEntity* outSpider = dynamic_cast<SpiderEntity*>(entity.get()))
         {
-            assert(*outSpider == *inSpider);
+            ASSERT(*outSpider == *inSpider);
         }
         else
         {
-            assert(false);
+            ASSERT(false);
         }
         reads++;
     }, 0);
-    assert(reads == 4);
+    ASSERT(reads == 4);
 
     savepoint.Close();
     return 0;

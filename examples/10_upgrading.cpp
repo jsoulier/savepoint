@@ -2,10 +2,11 @@
 #include <savepoint/savepoint.hpp>
 
 #include <array>
-#include <cassert>
 #include <filesystem>
 #include <string>
 #include <string_view>
+
+#include "assert.hpp"
 
 static constexpr SavepointVersion kVersion1{0, 0, 1};
 static constexpr SavepointVersion kVersion2{0, 1, 0};
@@ -326,16 +327,16 @@ static void ReadWrite(std::string_view name, SavepointVersion version)
 {
     Savepoint savepoint;
     SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", version);
-    assert(status == SavepointStatus::New);
+    ASSERT(status == SavepointStatus::New);
     InT inEntity;
     savepoint.Write(inEntity, 0);
     int reads = 0;
     savepoint.Read<OutT>([&](OutT& outEntity)
     {
-        assert(outEntity == inEntity);
+        ASSERT(outEntity == inEntity);
         reads++;
     }, 0);
-    assert(reads == 1);
+    ASSERT(reads == 1);
     savepoint.Clear();
     savepoint.Close();
 }

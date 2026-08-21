@@ -2,7 +2,6 @@
 #include <savepoint/savepoint.hpp>
 
 #include <array>
-#include <cassert>
 #include <deque>
 #include <filesystem>
 #include <list>
@@ -16,6 +15,8 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+
+#include "assert.hpp"
 
 static constexpr SavepointVersion kVersion{0, 0, 0};
 
@@ -146,7 +147,7 @@ int main()
 
     Savepoint savepoint;
     SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
-    assert(status == SavepointStatus::New);
+    ASSERT(status == SavepointStatus::New);
 
     Entity inEntity;
     inEntity.OnCreate();
@@ -155,10 +156,10 @@ int main()
     int reads = 0;
     savepoint.Read<Entity>([&](Entity& outEntity)
     {
-        assert(outEntity == inEntity);
+        ASSERT(outEntity == inEntity);
         reads++;
     }, 0);
-    assert(reads == 1);
+    ASSERT(reads == 1);
 
     savepoint.Close();
     return 0;

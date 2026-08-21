@@ -1,9 +1,10 @@
 // [11_error_handling]
 #include <savepoint/savepoint.hpp>
 
-#include <cassert>
 #include <cstdint>
 #include <filesystem>
+
+#include "assert.hpp"
 
 static constexpr SavepointVersion kVersion{0, 0, 0};
 
@@ -68,26 +69,26 @@ int main()
         int reads = 0;
         savepoint.Read<Entity>([&](Entity& outEntity)
         {
-            assert(outEntity == inEntity);
+            ASSERT(outEntity == inEntity);
             reads++;
         }, 0);
         return reads == 1;
     };
 
     savepoint.Write(inEntity, 0);
-    assert(hasSingleEntity());
+    ASSERT(hasSingleEntity());
 
     // The read failed and the callback isn't invoked
-    savepoint.Read<ReadEntity>([](ReadEntity& outReadEntity) { assert(false); }, 0);
+    savepoint.Read<ReadEntity>([](ReadEntity& outReadEntity) { ASSERT(false); }, 0);
 
     // The write failed so there's nothing to read
     savepoint.Delete(inEntity);
     WriteEntity inWriteEntity;
     savepoint.Write(inWriteEntity, 0);
-    savepoint.Read<WriteEntity>([](WriteEntity& outWriteEntity) { assert(false); }, 0);
+    savepoint.Read<WriteEntity>([](WriteEntity& outWriteEntity) { ASSERT(false); }, 0);
 
     savepoint.Write(inEntity, 0);
-    assert(hasSingleEntity());
+    ASSERT(hasSingleEntity());
 
     savepoint.Close();
     return 0;

@@ -1,8 +1,9 @@
 // [15_reserved_ids]
 #include <savepoint/savepoint.hpp>
 
-#include <cassert>
 #include <filesystem>
+
+#include "assert.hpp"
 
 static constexpr SavepointVersion kVersion{0, 0, 0};
 
@@ -54,7 +55,7 @@ int main()
 
     Savepoint savepoint;
     SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
-    assert(status == SavepointStatus::New);
+    ASSERT(status == SavepointStatus::New);
 
     Player inPlayer{10};
     Boss inBoss{20, 100, 1};
@@ -62,30 +63,30 @@ int main()
     savepoint.Write(inBoss, kBossID);
 
     Player outPlayer;
-    assert(savepoint.Read(outPlayer, kPlayerID));
-    assert(outPlayer.Score == inPlayer.Score);
+    ASSERT(savepoint.Read(outPlayer, kPlayerID));
+    ASSERT(outPlayer.Score == inPlayer.Score);
 
     Boss outBoss;
-    assert(savepoint.Read(outBoss, kBossID));
-    assert(outBoss.Difficulty == inBoss.Difficulty);
-    assert(outBoss.Health == inBoss.Health);
-    assert(outBoss.Attempts == inBoss.Attempts);
+    ASSERT(savepoint.Read(outBoss, kBossID));
+    ASSERT(outBoss.Difficulty == inBoss.Difficulty);
+    ASSERT(outBoss.Health == inBoss.Health);
+    ASSERT(outBoss.Attempts == inBoss.Attempts);
 
     inBoss.Difficulty = 30;
     inBoss.Attempts++;
     savepoint.Write(inBoss, kBossID);
-    assert(savepoint.Read(outBoss, kBossID));
-    assert(outBoss.Difficulty == inBoss.Difficulty);
-    assert(outBoss.Health == inBoss.Health);
-    assert(outBoss.Attempts == inBoss.Attempts);
-    assert(savepoint.Read(outPlayer, kPlayerID));
-    assert(outPlayer.Score == inPlayer.Score);
+    ASSERT(savepoint.Read(outBoss, kBossID));
+    ASSERT(outBoss.Difficulty == inBoss.Difficulty);
+    ASSERT(outBoss.Health == inBoss.Health);
+    ASSERT(outBoss.Attempts == inBoss.Attempts);
+    ASSERT(savepoint.Read(outPlayer, kPlayerID));
+    ASSERT(outPlayer.Score == inPlayer.Score);
 
-    assert(!savepoint.Read(outBoss, 1003));
+    ASSERT(!savepoint.Read(outBoss, 1003));
 
     savepoint.Clear();
-    assert(!savepoint.Read(outPlayer, kPlayerID));
-    assert(!savepoint.Read(outBoss, kBossID));
+    ASSERT(!savepoint.Read(outPlayer, kPlayerID));
+    ASSERT(!savepoint.Read(outBoss, kBossID));
 
     savepoint.Close();
     return 0;

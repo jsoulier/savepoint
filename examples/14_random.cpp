@@ -1,9 +1,10 @@
 // [14_random]
 #include <savepoint/savepoint.hpp>
 
-#include <cassert>
 #include <filesystem>
 #include <random>
+
+#include "assert.hpp"
 
 static constexpr SavepointVersion kVersion{0, 0, 0};
 
@@ -13,13 +14,13 @@ int main()
 
     Savepoint savepoint;
     SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
-    assert(status == SavepointStatus::New);
+    ASSERT(status == SavepointStatus::New);
 
     std::minstd_rand inGenerator{12345};
     std::minstd_rand expected{12345};
     for (int i = 0; i < 5; i++)
     {
-        assert(inGenerator() == expected());
+        ASSERT(inGenerator() == expected());
     }
 
     savepoint.Write(inGenerator);
@@ -27,10 +28,10 @@ int main()
 
     std::minstd_rand outGenerator;
     bool exists = savepoint.Read(outGenerator);
-    assert(exists);
+    ASSERT(exists);
     for (int i = 0; i < 5; i++)
     {
-        assert(outGenerator() == expected());
+        ASSERT(outGenerator() == expected());
     }
 
     savepoint.Close();

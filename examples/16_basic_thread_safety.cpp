@@ -1,11 +1,12 @@
 // [16_basic_thread_safety]
 #include <savepoint/savepoint.hpp>
 
-#include <cassert>
 #include <barrier>
 #include <filesystem>
 #include <thread>
 #include <vector>
+
+#include "assert.hpp"
 
 static constexpr SavepointVersion kVersion{0, 0, 0};
 static constexpr int kThreadCount = 8;
@@ -32,7 +33,7 @@ int main()
 
     Savepoint savepoint;
     SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion, kThreadSafe);
-    assert(status == SavepointStatus::New);
+    ASSERT(status == SavepointStatus::New);
 
     std::barrier barrier{kThreadCount};
     std::vector<std::thread> threads;
@@ -47,9 +48,9 @@ int main()
                 savepoint.Write(inEntity, id);
 
                 Entity outEntity;
-                assert(savepoint.Read(outEntity, id));
-                assert(outEntity.ID == inEntity.ID);
-                assert(outEntity.Score == inEntity.Score);
+                ASSERT(savepoint.Read(outEntity, id));
+                ASSERT(outEntity.ID == inEntity.ID);
+                ASSERT(outEntity.Score == inEntity.Score);
             }
         });
     }
