@@ -2,21 +2,21 @@
     "version": "2.0.0",
     "tasks": [
         {
-        "label": "docs",
-        "type": "shell",
-        "command": "doxygen",
-        "args": [
-            "Doxyfile"
-        ],
-        "group": {
-            "kind": "build",
-            "isDefault": true
-        },
-        "presentation": {
-            "reveal": "always",
-            "panel": "shared"
-        },
-        "problemMatcher": []
+            "label": "docs",
+            "type": "shell",
+            "command": "doxygen",
+            "args": [
+                "Doxyfile"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
         }
     ]
 }

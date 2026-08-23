@@ -1,6 +1,7 @@
 {
     "cmake.configureArgs": [
-        "-DSAVEPOINT_DEBUGGER=ON"
+        "-DSAVEPOINT_DEBUGGER=ON",
+        "-DSAVEPOINT_PROFILE=ON"
     ],
     "cmake.parallelJobs": 8
 }
