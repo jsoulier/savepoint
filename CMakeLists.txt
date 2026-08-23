@@ -1,16 +1,16 @@
 cmake_minimum_required(VERSION 3.24)
 project(savepoint)
 
-option(SAVEPOINT_SQLITE3 "Enable SQLite3 driver" ON)
-option(SAVEPOINT_DEBUGGER "Enable Savepoint's debugger" OFF)
-option(SAVEPOINT_PROFILE "Enable Tracy profiling" OFF)
+option(SAVEPOINT_NULL "Enable the null driver" ON)
+option(SAVEPOINT_SQLITE3 "Enable the SQLite3 driver" ON)
+option(SAVEPOINT_DEBUGGER "Enable debugging" OFF)
+option(SAVEPOINT_PROFILE "Enable profiling" OFF)
 
 add_library(savepoint
     src/debug.cpp
     src/id.cpp
     src/log.cpp
     src/mutex.cpp
-    src/null.cpp
     src/polymorph.cpp
     src/savepoint.cpp
     src/version.cpp
@@ -29,6 +29,10 @@ endif()
 set_target_properties(savepoint PROPERTIES CXX_STANDARD 23)
 set_target_properties(savepoint PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 target_precompile_headers(savepoint PUBLIC <savepoint/savepoint.hpp>)
+if(SAVEPOINT_NULL)
+    target_compile_definitions(savepoint PRIVATE SAVEPOINT_NULL)
+    target_sources(savepoint PRIVATE src/null.cpp)
+endif()
 if(SAVEPOINT_SQLITE3)
     add_subdirectory(lib/sqlite3)
     target_compile_definitions(savepoint PRIVATE SAVEPOINT_SQLITE3)

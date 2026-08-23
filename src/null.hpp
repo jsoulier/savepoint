@@ -2,6 +2,7 @@
 
 #include <savepoint/savepoint.hpp>
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
@@ -9,6 +10,8 @@
 class SavepointDriverNull : public ISavepointDriver
 {
 public:
+    SavepointDriverNull();
+    std::string_view GetName() const override;
     SavepointStatus Open(std::string_view path, bool threadSafe, int maxWait) override;
     bool IsOpen() override;
     bool Write(const void* data, int size) override;
@@ -29,4 +32,7 @@ public:
     void Close() override;
     void Save() override;
     void Clear() override;
+
+private:
+    std::atomic<int> ID;
 };

@@ -6,7 +6,9 @@
 #include <string_view>
 #include <utility>
 
+#if SAVEPOINT_NULL
 #include "null.hpp"
+#endif
 #if SAVEPOINT_SQLITE3
 #include "sqlite3.hpp"
 #endif
@@ -24,9 +26,11 @@ SavepointStatus Savepoint::Open(SavepointDriver driver, std::string_view path, S
     SAVEPOINT_PROFILE_SCOPE();
     switch (driver)
     {
+#ifdef SAVEPOINT_NULL
     case SavepointDriver::Null:
         Driver = std::make_unique<SavepointDriverNull>();
         break;
+#endif
 #ifdef SAVEPOINT_SQLITE3
     case SavepointDriver::SQLite3:
         Driver = std::make_unique<SavepointDriverSQLite3>();
@@ -48,6 +52,15 @@ SavepointStatus Savepoint::Open(SavepointDriver driver, std::string_view path, S
         Driver->Close();
     }
     return status;
+}
+
+std::string_view Savepoint::GetDriverName() const
+{
+    if (Driver)
+    {
+        return Driver->GetName();
+    }
+    return "";
 }
 
 void Savepoint::Close()

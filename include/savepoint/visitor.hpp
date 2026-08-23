@@ -476,31 +476,40 @@ public:
     }
 
     /**
-     * @brief Skip bytes.
+     * @brief Skip an element.
      *
      * @tparam T The type to skip.
      */
-    template<SavepointIsCopyable T>
+    template<typename T>
     void Skip()
     {
-        using PortableType = typename SavepointPortableTypeConverter<std::remove_cv_t<T>>::Type;
         if (HasError())
         {
             return;
         }
-        if (IsReading())
+        if constexpr (SavepointIsCopyable<T>)
         {
-            if (sizeof(PortableType) > GetSize())
+            using ConverterType = SavepointPortableTypeConverter<std::remove_cv_t<T>>;
+            using PortableType = typename ConverterType::Type;
+            if (IsReading())
             {
-                SavepointLog(std::format("Tried to skip past visitor: {}", State.Version.GetString()));
-                SetError();
-                return;
+                if (sizeof(PortableType) > GetSize())
+                {
+                    SavepointLog(std::format("Tried to skip past visitor: {}", State.Version.GetString()));
+                    SetError();
+                    return;
+                }
+                State.Offset += sizeof(PortableType);
             }
-            State.Offset += sizeof(PortableType);
+            else
+            {
+                State.Writer.resize(State.Writer.size() + sizeof(PortableType));
+            }
         }
         else
         {
-            State.Writer.resize(State.Writer.size() + sizeof(PortableType));
+            T element;
+            (*this)(element);
         }
     }
 

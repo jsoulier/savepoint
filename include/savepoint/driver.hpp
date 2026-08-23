@@ -30,6 +30,7 @@ class ISavepointDriver
 {
 public:
     virtual ~ISavepointDriver() = default;
+    virtual std::string_view GetName() const = 0;
     virtual SavepointStatus Open(std::string_view path, bool threadSafe, int maxWait) = 0;
     virtual bool IsOpen() = 0;
     virtual bool Write(const void* data, int size) = 0;

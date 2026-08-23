@@ -146,6 +146,14 @@ public:
     SavepointStatus Open(SavepointDriver driver, std::string_view path, SavepointVersion version, bool threadSafe = false, int maxWait = 0);
 
     /**
+     * @brief Get the name of the underlying driver.
+     *
+     * @return The driver name or an empty string.
+     * @see ISavepointDriver
+     */
+    std::string_view GetDriverName() const;
+
+    /**
      * @brief Write a singleton to the Savepoint.
      * 
      * For storing information such as date and time, the user can write a
@@ -338,7 +346,7 @@ public:
         }
         SavepointVisitor visitor;
         bool success = false;
-        Driver->Read([&visitor,&item, &success](const void* data, int size)
+        Driver->Read([&visitor, &item, &success](const void* data, int size)
         {
             visitor.Begin(data, size, item);
             success = true;
@@ -370,7 +378,7 @@ public:
         }
         SavepointVisitor visitor;
         bool success = false;
-        Driver->Read([&visitor,&item, &success](const void* data, int size)
+        Driver->Read([&visitor, &item, &success](const void* data, int size)
         {
             visitor.Begin(data, size, item);
             success = true;
@@ -400,7 +408,7 @@ public:
             return;
         }
         SavepointVisitor visitor;
-        Driver->Read([&visitor,&function, level](const void* data, int size, int id)
+        Driver->Read([&visitor, &function, level](const void* data, int size, int id)
         {
             T item;
             visitor.Begin(data, size, item);
@@ -430,7 +438,7 @@ public:
             return;
         }
         SavepointVisitor visitor;
-        Driver->Read([&visitor,&function, level](const void* data, int size, int x, int y)
+        Driver->Read([&visitor, &function, level](const void* data, int size, int x, int y)
         {
             T item;
             visitor.Begin(data, size, item);
@@ -459,7 +467,7 @@ public:
             return;
         }
         SavepointVisitor visitor;
-        Driver->Read([&visitor,&function, level](const void* data, int size, int x, int y, int z)
+        Driver->Read([&visitor, &function, level](const void* data, int size, int x, int y, int z)
         {
             T item;
             visitor.Begin(data, size, item);
@@ -492,7 +500,7 @@ public:
         }
         SavepointVisitor visitor;
         bool success = false;
-        Driver->Read([&visitor,&tile, &success](const void* data, int size)
+        Driver->Read([&visitor, &tile, &success](const void* data, int size)
         {
             visitor.Begin(data, size, tile);
             success = true;
@@ -526,7 +534,7 @@ public:
         }
         SavepointVisitor visitor;
         bool success = false;
-        Driver->Read([&visitor,&tile, &success](const void* data, int size)
+        Driver->Read([&visitor, &tile, &success](const void* data, int size)
         {
             visitor.Begin(data, size, tile);
             success = true;

@@ -89,12 +89,6 @@ static constexpr const char* kClearTiles2DSQL =
 static constexpr const char* kClearTiles3DSQL =
     "DELETE FROM tiles_3d;";
 
-static int Step(sqlite3_stmt* statement)
-{
-    SAVEPOINT_PROFILE_SCOPE();
-    return sqlite3_step(statement);
-}
-
 SavepointDriverSQLite3::SavepointDriverSQLite3()
     : ISavepointDriver()
     , Mutex{}
@@ -123,13 +117,17 @@ SavepointDriverSQLite3::SavepointDriverSQLite3()
 {
 }
 
+std::string_view SavepointDriverSQLite3::GetName() const
+{
+    return "sqlite3";
+}
+
 SavepointStatus SavepointDriverSQLite3::Open(std::string_view path, bool threadSafe, int maxWait)
 {
     SAVEPOINT_PROFILE_SCOPE();
     Mutex.SetEnabled(threadSafe);
     std::scoped_lock lock{Mutex};
-    constexpr int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX;
-    if (sqlite3_open_v2(path.data(), &Handle, flags, nullptr) != SQLITE_OK)
+    if (sqlite3_open_v2(path.data(), &Handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX, nullptr) != SQLITE_OK)
     {
         SavepointLog(std::format("Failed to open database: {}, {}", path, sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
@@ -144,7 +142,7 @@ SavepointStatus SavepointDriverSQLite3::Open(std::string_view path, bool threadS
         SavepointLog(std::format("Failed to enable WAL: {}", sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
     }
-    if (sqlite3_exec(Handle, "PRAGMA wal_autocheckpoint=4000;", nullptr, nullptr, nullptr) != SQLITE_OK)
+    if (sqlite3_wal_autocheckpoint(Handle, 2500) != SQLITE_OK)
     {
         SavepointLog(std::format("Failed to set wal_autocheckpoint: {}", sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
@@ -322,8 +320,7 @@ int SavepointDriverSQLite3::Insert(const void* data, int size, int level)
     int id = SavepointID::kInvalidID;
     sqlite3_bind_int(InsertEntityStmt, 1, level);
     sqlite3_bind_blob(InsertEntityStmt, 2, data, size, SQLITE_STATIC);
-    int result = Step(InsertEntityStmt);
-    if (result != SQLITE_DONE)
+    if (sqlite3_step(InsertEntityStmt) != SQLITE_DONE)
     {
         SavepointLog(std::format("Failed to insert entity: {}", sqlite3_errmsg(Handle)));
     }
@@ -364,8 +361,7 @@ bool SavepointDriverSQLite3::Write(const void* data, int size, int x, int y, int
     sqlite3_bind_int(WriteTile2DStmt, 2, y);
     sqlite3_bind_int(WriteTile2DStmt, 3, level);
     sqlite3_bind_blob(WriteTile2DStmt, 4, data, size, SQLITE_STATIC);
-    int result = Step(WriteTile2DStmt);
-    if (result != SQLITE_DONE)
+    if (sqlite3_step(WriteTile2DStmt) != SQLITE_DONE)
     {
         SavepointLog(std::format("Failed to write tile: {}, {}, {}", x, y, sqlite3_errmsg(Handle)));
         success = false;
