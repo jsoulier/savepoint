@@ -6,10 +6,10 @@
 #include <string_view>
 #include <utility>
 
-#if SAVEPOINT_NULL
+#ifdef SAVEPOINT_NULL
 #include "null.hpp"
 #endif
-#if SAVEPOINT_SQLITE3
+#ifdef SAVEPOINT_SQLITE3
 #include "sqlite3.hpp"
 #endif
 

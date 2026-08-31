@@ -62,6 +62,9 @@ private:
         VisitorState()
         {
             Clear();
+#ifdef SAVEPOINT_DEBUGGER
+            Backtraces = 0;
+#endif
         }
 
         void Clear()
@@ -94,6 +97,7 @@ private:
 #ifdef SAVEPOINT_DEBUGGER
         std::vector<SavepointDebugNode> Debug;
         int Depth;
+        int Backtraces;
 #endif
     };
 
@@ -192,6 +196,7 @@ public:
         State.Reader = {static_cast<uint8_t*>(const_cast<void*>(data)), size_t(size)};
         State.Writer.clear();
         State.Offset = 0;
+        State.DebugClear();
         using VisitorFlags = typename SavepointPortableTypeConverter<SavepointVisitorFlags>::Type;
         if (sizeof(VisitorFlags) > size)
         {
@@ -523,6 +528,27 @@ public:
      */
     void SetError()
     {
+#ifdef SAVEPOINT_DEBUGGER
+        static constexpr int kBacktraces = 10;
+        if (!State.Error && IsReading() && State.Backtraces < kBacktraces)
+        {
+            State.Backtraces++;
+            std::string result = std::format("Backtrace: stopped at byte {} of {}", State.Offset, State.Reader.size());
+            for (const SavepointDebugNode& node : State.Debug)
+            {
+                result += std::format("\n{:{}}{}", "", (node.GetDepth() + 1) * 2, node.GetTypeName());
+                if (node.GetIsLeaf())
+                {
+                    result += std::format(" = {}", node.GetValue());
+                }
+            }
+            if (State.Backtraces == kBacktraces)
+            {
+                result += std::format("\nHit max of {} backtraces", kBacktraces);
+            }
+            SavepointLog(result);
+        }
+#endif
         State.Error = true;
     }
 

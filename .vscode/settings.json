@@ -3,5 +3,8 @@
         "-DSAVEPOINT_DEBUGGER=ON",
         "-DSAVEPOINT_PROFILE=ON"
     ],
-    "cmake.parallelJobs": 8
+    "cmake.parallelJobs": 8,
+    "cmake.ctestArgs": [
+        "-V"
+    ]
 }

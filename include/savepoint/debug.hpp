@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 #ifdef SAVEPOINT_DEBUGGER
 
@@ -64,9 +65,9 @@ public:
     }
 
 private:
-    int Depth;
     std::string Type;
     std::string Value;
+    int Depth;
 };
 
 /** @cond INTERNAL */

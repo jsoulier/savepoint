@@ -11,6 +11,7 @@ Inspired by [cereal](https://github.com/USCiLab/cereal) and built on databases l
 - Smart pointers, containers, tuples, random generators, etc
 - Portable saves across platforms
 - Opt-in thread safety and concurrent SQLite connections
+- Backtraces
 - Integrated visual debugger
 
 ### Examples

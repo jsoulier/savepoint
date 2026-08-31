@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <vector>
 
 #include "assert.hpp"
 
@@ -10,25 +11,27 @@ static constexpr SavepointVersion kVersion{0, 0, 0};
 
 struct Entity : SavepointEntity
 {
-    uint32_t Value;
+    uint32_t Value1;
+    uint32_t Value2;
 
     void OnCreate()
     {
-        Value = 0xDEADBEEF;
+        Value1 = 0xDEADBEEF;
+        Value2 = 0xBAADF00D;
     }
 
     void Visit(SavepointVisitor& visitor)
     {
-        visitor(Value);
+        visitor(Value1);
+        visitor(Value2);
     }
 
     bool operator==(const Entity other) const
     {
-        return Value == other.Value;
+        return Value1 == other.Value1 && Value2 == other.Value2;
     }
 };
 
-// Use SetError to prevent the read callback from being invoked (prevents reading the entity)
 struct ReadEntity : Entity
 {
     void Visit(SavepointVisitor& visitor)
@@ -41,7 +44,33 @@ struct ReadEntity : Entity
     }
 };
 
-// Use SetError to prevent the insert/update from being invoked (prevents writing the entity)
+struct ReadPastEntity : Entity
+{
+    void Visit(SavepointVisitor& visitor)
+    {
+        Entity::Visit(visitor);
+        if (visitor.IsReading())
+        {
+            uint32_t value = 0;
+            visitor(value);
+        }
+    }
+};
+
+struct PartialReadEntity : Entity
+{
+    void Visit(SavepointVisitor& visitor)
+    {
+        visitor(Value1);
+        if (visitor.IsReading())
+        {
+            visitor.SetError();
+            return;
+        }
+        visitor(Value2);
+    }
+};
+
 struct WriteEntity : Entity
 {
     void Visit(SavepointVisitor& visitor)
@@ -79,7 +108,13 @@ int main()
     ASSERT(hasSingleEntity());
 
     // The read failed and the callback isn't invoked
-    savepoint.Read<ReadEntity>([](ReadEntity& outReadEntity) { ASSERT(false); }, 0);
+    savepoint.Read<ReadEntity>([](ReadEntity& outEntity) { ASSERT(false); }, 0);
+
+    // Reading past the end of the visitor caused a failure and the callback isn't invoked
+    savepoint.Read<ReadPastEntity>([](ReadPastEntity& outEntity) { ASSERT(false); }, 0);
+
+    // Not reading the entire visitor caused a failure and the callback isn't invoked
+    savepoint.Read<PartialReadEntity>([](PartialReadEntity& outEntity) { ASSERT(false); }, 0);
 
     // The write failed so there's nothing to read
     savepoint.Delete(inEntity);
