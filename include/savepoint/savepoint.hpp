@@ -4,6 +4,7 @@
 #include <savepoint/debug.hpp>
 #include <savepoint/driver.hpp>
 #include <savepoint/entity.hpp>
+#include <savepoint/file.hpp>
 #include <savepoint/fwd.hpp>
 #include <savepoint/id.hpp>
 #include <savepoint/log.hpp>
