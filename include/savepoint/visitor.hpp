@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstring>
 #include <format>
+#include <iosfwd>
 #include <memory>
 #include <span>
 #include <string>
@@ -73,8 +74,8 @@ private:
             Flags = SavepointVisitorFlags::None;
             TypeID = 0;
             Error = false;
-            Writer.clear();
             Reader = {};
+            Data.clear();
             Offset = 0;
             DebugClear();
         }
@@ -91,7 +92,7 @@ private:
         SavepointVisitorFlags Flags;
         uint32_t TypeID;
         bool Error;
-        std::vector<uint8_t> Writer;
+        std::vector<uint8_t> Data;
         std::span<uint8_t> Reader;
         int Offset;
 #ifdef SAVEPOINT_DEBUGGER
@@ -166,8 +167,8 @@ public:
         }
         State.TypeID = SavepointTypeID<T>();
         State.Error = false;
-        State.Writer.clear();
         State.Reader = {};
+        State.Data.clear();
         State.Offset = 0;
         SavepointVersion savepointVersion = kSavepointVersion;
         operator()(State.Flags);
@@ -181,24 +182,62 @@ public:
     /**
      * @brief Prepare a visitor for reading from bytes.
      *
-     * Reads the header only. Use the overload taking an item to deserialize one.
-     *
      * @param data The data as bytes.
      * @param size The number of bytes.
      */
     void Begin(const void* data, int size)
+    {
+        State.Reader = {};
+        State.Data.clear();
+        State.Error = false;
+        if (size < 0)
+        {
+            SavepointLog("Visitor size was less than zero");
+            SetError();
+            return;
+        }
+        State.Data.resize(size);
+        if (size)
+        {
+            std::memcpy(State.Data.data(), data, size);
+        }
+        BeginInternal();
+    }
+
+    /**
+     * @brief Prepare a visitor for reading from bytes and deserialize the item.
+     *
+     * @tparam T The type to read.
+     * @param data The data as bytes.
+     * @param size The number of bytes.
+     * @param item The item to read into.
+     */
+    template<typename T>
+    void Begin(const void* data, int size, T& item)
+    {
+        SAVEPOINT_PROFILE_SCOPE();
+        Begin(data, size);
+        operator()(item);
+        if (!IsEmpty())
+        {
+            SavepointLog("Visitor has unread data");
+            SetError();
+        }
+    }
+
+private:
+    void BeginInternal()
     {
         SAVEPOINT_PROFILE_SCOPE();
         State.Version = SavepointVersion{};
         State.Flags = SavepointVisitorFlags::None;
         State.TypeID = 0;
         State.Error = false;
-        State.Reader = {static_cast<uint8_t*>(const_cast<void*>(data)), size_t(size)};
-        State.Writer.clear();
+        State.Reader = State.Data;
         State.Offset = 0;
         State.DebugClear();
         using VisitorFlags = typename SavepointPortableTypeConverter<SavepointVisitorFlags>::Type;
-        if (sizeof(VisitorFlags) > size)
+        if (sizeof(VisitorFlags) > State.Data.size())
         {
             SavepointLog("Tried to read past visitor flags");
             SetError();
@@ -219,30 +258,7 @@ public:
         State.DebugClear();
     }
 
-    /**
-     * @brief Prepare a visitor for reading from bytes and deserialize the item.
-     *
-     * Sets an error if the item did not consume every byte, which means the data
-     * does not describe the type being read.
-     *
-     * @tparam T The type to read.
-     * @param data The data as bytes.
-     * @param size The number of bytes.
-     * @param item The item to read into.
-     */
-    template<typename T>
-    void Begin(const void* data, int size, T& item)
-    {
-        SAVEPOINT_PROFILE_SCOPE();
-        Begin(data, size);
-        operator()(item);
-        if (!IsEmpty())
-        {
-            SavepointLog("Visitor has unread data");
-            SetError();
-        }
-    }
-
+public:
     /**
      * @brief Serialize to/from an item's raw bytes.
      * 
@@ -303,8 +319,8 @@ public:
                 return;
             }
             PortableType value = ConverterType::Write(item);
-            State.Writer.resize(State.Writer.size() + sizeof(value));
-            Memcpy(State.Writer.data() + State.Writer.size() - sizeof(value), std::addressof(value), 1, sizeof(value));
+            State.Data.resize(State.Data.size() + sizeof(value));
+            Memcpy(State.Data.data() + State.Data.size() - sizeof(value), std::addressof(value), 1, sizeof(value));
         }
         DebugLeaf(item);
     }
@@ -366,8 +382,8 @@ public:
         }
         else if (bytes)
         {
-            State.Writer.resize(State.Writer.size() + bytes);
-            uint8_t* destination = State.Writer.data() + State.Writer.size() - bytes;
+            State.Data.resize(State.Data.size() + bytes);
+            uint8_t* destination = State.Data.data() + State.Data.size() - bytes;
             if constexpr (kIsPortable)
             {
                 Memcpy(destination, data, size, sizeof(PortableType));
@@ -508,7 +524,7 @@ public:
             }
             else
             {
-                State.Writer.resize(State.Writer.size() + sizeof(PortableType));
+                State.Data.resize(State.Data.size() + sizeof(PortableType));
             }
         }
         else
@@ -747,7 +763,7 @@ public:
         }
         else
         {
-            return State.Writer.size();
+            return State.Data.size();
         }
     }
 
@@ -768,7 +784,24 @@ public:
      */
     const void* GetData() const
     {
-        return State.Writer.data();
+        return State.Data.data();
+    }
+
+    /**
+     * @brief Clear the visitor.
+     */
+    void Clear()
+    {
+        State.Reader = {};
+        State.Data.clear();
+    }
+
+    /**
+     * @brief Shrink the visitor to the required amount of memory.
+     */
+    void ShrinkToFit()
+    {
+        State.Data.shrink_to_fit();
     }
 
 private:

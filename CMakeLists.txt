@@ -7,12 +7,13 @@ option(SAVEPOINT_DEBUGGER "Enable debugging" OFF)
 option(SAVEPOINT_PROFILE "Enable profiling" OFF)
 
 add_library(savepoint
+    src/database.cpp
     src/debug.cpp
     src/id.cpp
+    src/stream.cpp
     src/log.cpp
     src/mutex.cpp
     src/polymorph.cpp
-    src/savepoint.cpp
     src/version.cpp
 )
 add_library(savepoint::savepoint ALIAS savepoint)
@@ -28,7 +29,6 @@ if(SAVEPOINT_PROFILE)
 endif()
 set_target_properties(savepoint PROPERTIES CXX_STANDARD 23)
 set_target_properties(savepoint PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
-target_precompile_headers(savepoint PUBLIC <savepoint/savepoint.hpp>)
 if(SAVEPOINT_NULL)
     target_compile_definitions(savepoint PRIVATE SAVEPOINT_NULL)
     target_sources(savepoint PRIVATE src/null.cpp)
@@ -82,6 +82,7 @@ if(PROJECT_IS_TOP_LEVEL)
     savepoint_example(15_reserved_ids)
     savepoint_example(16_basic_thread_safety)
     savepoint_example(17_concurrency)
+    savepoint_example(19_stream)
     if(SAVEPOINT_DEBUGGER)
         savepoint_app(13_asteroids)
         savepoint_app(18_debugger)

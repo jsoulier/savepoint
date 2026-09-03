@@ -182,6 +182,12 @@ void Visit(SavepointVisitor& visitor, T& item)
         }
     }
     visitor(size);
+    if (size < 0)
+    {
+        SavepointLog("Container size was less than zero");
+        visitor.SetError();
+        return;
+    }
     if (visitor.IsReading())
     {
         // Can detect when we read garbage and would iterate forever
