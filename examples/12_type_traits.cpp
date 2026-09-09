@@ -2,10 +2,12 @@
 
 #include <array>
 #include <deque>
+#include <istream>
 #include <list>
 #include <map>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <random>
 #include <set>
 #include <string>
@@ -29,6 +31,9 @@ struct NoVisit {};
 struct MemberVisit { void Visit(SavepointVisitor& visitor) {} };
 struct FreeVisit {};
 static void Visit(SavepointVisitor& visitor, FreeVisit& item) {}
+struct StreamVisit { int Value; };
+static std::ostream& operator<<(std::ostream& stream, const StreamVisit& item) { return stream << item.Value; }
+static std::istream& operator>>(std::istream& stream, StreamVisit& item) { return stream >> item.Value; }
 enum class SignedEnum : int8_t {};
 enum class UnsignedEnum : uint8_t {};
 
@@ -38,6 +43,10 @@ static_assert(!SavepointHasFreeVisit<NoVisit>);
 static_assert(!SavepointHasMemberVisit<FreeVisit>);
 static_assert(SavepointHasMemberVisit<MemberVisit>);
 static_assert(!SavepointHasMemberVisit<NoVisit>);
+static_assert(SavepointHasStreamOperators<StreamVisit>);
+static_assert(SavepointHasStreamOperators<int>);
+static_assert(SavepointHasStreamOperators<std::string>);
+static_assert(!SavepointHasFreeVisit<StreamVisit>);
 
 static_assert(std::is_same_v<SavepointPortableTypeConverter<int8_t>::Type, int8_t>);
 static_assert(std::is_same_v<SavepointPortableTypeConverter<int16_t>::Type, int16_t>);
@@ -91,7 +100,7 @@ static_assert(SavepointIsRandom<std::minstd_rand>);
 static_assert(SavepointIsRandom<std::mt19937>);
 static_assert(!SavepointIsRandom<std::random_device>);
 static_assert(!SavepointIsRandom<std::uniform_int_distribution<int>>);
-static_assert(SavepointHasFreeVisit<std::minstd_rand>);
+static_assert(!SavepointHasFreeVisit<std::minstd_rand>);
 
 static_assert(SavepointIsTuple<std::tuple<int>>);
 static_assert(SavepointIsTuple<std::tuple<int, int>>);

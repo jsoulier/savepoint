@@ -16,6 +16,7 @@
 #include <format>
 #include <iosfwd>
 #include <memory>
+#include <sstream>
 #include <span>
 #include <string>
 #include <string_view>
@@ -492,6 +493,43 @@ public:
         {
             DebugPush(item);
             item.Visit(*this);
+            DebugPop();
+        }
+    }
+
+    /**
+     * @brief Serialize using the item's stream operators.
+     *
+     * @tparam T The streamable type.
+     * @tparam Args The types of the args.
+     * @param item The item to serialize.
+     * @param version The version required to deserialize.
+     * @param args The args for default initialization.
+     */
+    template<SavepointHasStreamOperators T, typename... Args>
+        requires (!SavepointIsCopyable<T> && !SavepointHasFreeVisit<T> && !SavepointHasMemberVisit<T> && !SavepointIsPointer<T>)
+    void operator()(T& item, SavepointVersion version = {}, Args&&... args)
+    {
+        if (TryVisit(item, version, std::forward<Args>(args)...))
+        {
+            DebugPush(item);
+            std::string state;
+            if (IsWriting())
+            {
+                std::stringstream stream;
+                stream << item;
+                state = stream.str();
+            }
+            operator()(state);
+            if (IsReading() && !HasError())
+            {
+                std::stringstream stream{state};
+                if (!(stream >> item))
+                {
+                    SavepointLog("Failed to read streamable type");
+                    SetError();
+                }
+            }
             DebugPop();
         }
     }

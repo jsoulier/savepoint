@@ -6,10 +6,11 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <iosfwd>
+#include <istream>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <random>
 #include <ranges>
 #include <string>
@@ -107,11 +108,13 @@ concept SavepointIsOptional = SavepointIsOptionalImpl<T>::value;
 template<SavepointIsOptional T>
 void Visit(SavepointVisitor& visitor, T& item);
 
+// std::istream/std::ostream
+template<typename T>
+concept SavepointHasStreamOperators = requires(std::ostream& o, std::istream& i, T& item) { o << item; i >> item; };
+
 // <random>
 template<typename T>
-concept SavepointIsRandom = std::uniform_random_bit_generator<T> && requires(std::ostream& o, std::istream& i, T& item) { o << item; i >> item; };
-template<SavepointIsRandom T>
-void Visit(SavepointVisitor& visitor, T& item);
+concept SavepointIsRandom = std::uniform_random_bit_generator<T> && SavepointHasStreamOperators<T>;
 
 // <ranges>
 template<typename T>

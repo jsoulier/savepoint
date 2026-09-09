@@ -10,7 +10,6 @@
 #include <format>
 #include <iterator>
 #include <ranges>
-#include <sstream>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -260,36 +259,6 @@ void Visit(SavepointVisitor& visitor, T& item)
             {
                 visitor(element);
             }
-        }
-    }
-}
-
-/**
- * @brief Visit implementation for serializing standard random number engines.
- *
- * @tparam T The type of the random number engine.
- * @param visitor The visitor.
- * @param item The random number engine.
- * @snippet examples/14_random.cpp 14_random
- */
-template<SavepointIsRandom T>
-void Visit(SavepointVisitor& visitor, T& item)
-{
-    std::string state;
-    if (visitor.IsWriting())
-    {
-        std::stringstream stream;
-        stream << item;
-        state = stream.str();
-    }
-    visitor(state);
-    if (visitor.IsReading() && !visitor.HasError())
-    {
-        std::stringstream stream{state};
-        if (!(stream >> item))
-        {
-            SavepointLog("Failed to read random number engine");
-            visitor.SetError();
         }
     }
 }

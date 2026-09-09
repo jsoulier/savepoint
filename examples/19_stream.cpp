@@ -1,6 +1,9 @@
 // [19_stream]
 #include <savepoint/savepoint.hpp>
 
+#include <iomanip>
+#include <istream>
+#include <ostream>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -26,23 +29,38 @@ struct Object
     {
     }
 
-    void Visit(SavepointVisitor& visitor)
-    {
-        visitor(Value);
-        visitor(Name);
-        visitor(Samples);
-    }
-
     bool operator==(const Object& other) const
     {
         return Value == other.Value && Name == other.Name && Samples == other.Samples;
     }
 };
 
+static std::ostream& operator<<(std::ostream& stream, const Object& object)
+{
+    stream << object.Value << ' ' << std::quoted(object.Name) << ' ' << object.Samples.size();
+    for (float sample : object.Samples)
+    {
+        stream << ' ' << sample;
+    }
+    return stream;
+}
+
+static std::istream& operator>>(std::istream& stream, Object& object)
+{
+    int count{};
+    stream >> object.Value >> std::quoted(object.Name) >> count;
+    object.Samples.resize(count);
+    for (float& sample : object.Samples)
+    {
+        stream >> sample;
+    }
+    return stream;
+}
+
 int main()
 {
     SavepointVisitor writer;
-    Object input{42, "stream", {1.0f, 2.0f, 3.0f}};
+    Object input{42, "MyObject", {1.0f, 2.0f, 3.0f}};
     writer.Begin(input, SavepointVersion{});
 
     std::stringstream stream1{std::ios::in | std::ios::out | std::ios::binary};
