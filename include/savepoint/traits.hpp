@@ -11,7 +11,6 @@
 #include <memory>
 #include <optional>
 #include <ostream>
-#include <random>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -108,14 +107,6 @@ concept SavepointIsOptional = SavepointIsOptionalImpl<T>::value;
 template<SavepointIsOptional T>
 void Visit(SavepointVisitor& visitor, T& item);
 
-// std::istream/std::ostream
-template<typename T>
-concept SavepointHasStreamOperators = requires(std::ostream& o, std::istream& i, T& item) { o << item; i >> item; };
-
-// <random>
-template<typename T>
-concept SavepointIsRandom = std::uniform_random_bit_generator<T> && SavepointHasStreamOperators<T>;
-
 // <ranges>
 template<typename T>
 concept SavepointIsDynamicRange = requires(T item) { item.insert(std::ranges::end(item), std::declval<typename T::value_type>()); };
@@ -133,6 +124,10 @@ template<typename T>
 concept SavepointHasFreeVisit = requires(SavepointVisitor visitor, T item) { { Visit(visitor, item) }; };
 template<typename T>
 concept SavepointHasMemberVisit = requires(SavepointVisitor visitor, T item) { { item.Visit(visitor) }; };
+
+// std::istream/std::ostream
+template<typename T>
+concept SavepointHasStreamOperators = requires(std::ostream& o, std::istream& i, T& item) { o << item; i >> item; };
 
 // For ensuring compatibility across platforms
 template<typename T>

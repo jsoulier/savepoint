@@ -8,7 +8,6 @@
 #include <memory>
 #include <optional>
 #include <ostream>
-#include <random>
 #include <set>
 #include <string>
 #include <string_view>
@@ -95,12 +94,6 @@ static_assert(!SavepointIsStaticRange<std::deque<int>>);
 
 static_assert(!SavepointHasMemberVisit<std::string>);
 static_assert(SavepointHasFreeVisit<std::string>);
-
-static_assert(SavepointIsRandom<std::minstd_rand>);
-static_assert(SavepointIsRandom<std::mt19937>);
-static_assert(!SavepointIsRandom<std::random_device>);
-static_assert(!SavepointIsRandom<std::uniform_int_distribution<int>>);
-static_assert(!SavepointHasFreeVisit<std::minstd_rand>);
 
 static_assert(SavepointIsTuple<std::tuple<int>>);
 static_assert(SavepointIsTuple<std::tuple<int, int>>);
