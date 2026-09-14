@@ -24,6 +24,7 @@ struct Entity : SavepointEntity
 {
     std::array<int, 5> Array;
     std::vector<int> Vector;
+    std::vector<bool> BoolVector;
     std::deque<int> Deque;
     std::map<int, int> Map;
     std::unordered_map<int, int> UnorderedMap;
@@ -51,6 +52,7 @@ struct Entity : SavepointEntity
     {
         Array = {1, 2, 3, 4, 5};
         Vector = {1, 2, 3};
+        BoolVector = {true, false, true};
         Deque = {1, 2, 3};
         Map = {{1, 2}, {2, 3}};
         UnorderedMap = {{1, 2}, {2, 3}};
@@ -83,6 +85,7 @@ struct Entity : SavepointEntity
     {
         visitor(Array);
         visitor(Vector);
+        visitor(BoolVector);
         visitor(Deque);
         visitor(Map);
         visitor(UnorderedMap);
@@ -112,6 +115,7 @@ struct Entity : SavepointEntity
         return
             Array == other.Array &&
             Vector == other.Vector &&
+            BoolVector == other.BoolVector &&
             Deque == other.Deque &&
             Map == other.Map &&
             UnorderedMap == other.UnorderedMap &&

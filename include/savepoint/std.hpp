@@ -255,9 +255,22 @@ void Visit(SavepointVisitor& visitor, T& item)
         }
         else
         {
-            for (auto& element : item)
+            // std::vector<bool> uses a proxy instead of a reference 
+            using ReferenceT = std::ranges::range_reference_t<T>;
+            if constexpr (std::is_reference_v<ReferenceT>)
             {
-                visitor(element);
+                for (auto& element : item)
+                {
+                    visitor(element);
+                }
+            }
+            else
+            {
+                for (auto&& element : item)
+                {
+                    ValueT value = element;
+                    visitor(value);
+                }
             }
         }
     }
