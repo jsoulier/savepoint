@@ -13,7 +13,7 @@ static constexpr int kThreadCount = 8;
 static constexpr int kIterationCount = 1000;
 
 // The Savepoint is used from multiple threads so we need thread safety
-static constexpr bool kThreadSafe = true;
+static constexpr SavepointFlags kFlags = SavepointFlags::SQLite3 | SavepointFlags::ReadWrite | SavepointFlags::ThreadSafe;
 
 struct Entity
 {
@@ -32,7 +32,7 @@ int main()
     std::filesystem::remove("savepoint.sqlite3");
 
     Savepoint savepoint;
-    SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion, kThreadSafe);
+    SavepointStatus status = savepoint.Open("savepoint.sqlite3", kVersion, kFlags);
     ASSERT(status == SavepointStatus::New);
 
     std::barrier barrier{kThreadCount};

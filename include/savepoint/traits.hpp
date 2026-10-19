@@ -4,6 +4,7 @@
 #include <savepoint/fwd.hpp>
 #include <savepoint/polymorph.hpp>
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <istream>
@@ -17,6 +18,7 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 /** @cond INTERNAL */
 
@@ -105,6 +107,39 @@ struct SavepointIsOptionalImpl<std::optional<T>> : std::true_type {};
 template<typename T>
 concept SavepointIsOptional = SavepointIsOptionalImpl<T>::value;
 template<SavepointIsOptional T>
+void Visit(SavepointVisitor& visitor, T& item);
+
+// std::variant
+template<typename T>
+struct SavepointIsVariantImpl : std::false_type {};
+template<typename... Args>
+struct SavepointIsVariantImpl<std::variant<Args...>> : std::true_type {};
+template<typename T>
+concept SavepointIsVariant = SavepointIsVariantImpl<T>::value;
+template<SavepointIsVariant T>
+void Visit(SavepointVisitor& visitor, T& item);
+
+// std::monostate
+inline void Visit(SavepointVisitor& visitor, std::monostate& item);
+
+// std::chrono::duration
+template<typename T>
+struct SavepointIsDurationImpl : std::false_type {};
+template<typename Rep, typename Period>
+struct SavepointIsDurationImpl<std::chrono::duration<Rep, Period>> : std::true_type {};
+template<typename T>
+concept SavepointIsDuration = SavepointIsDurationImpl<T>::value;
+template<SavepointIsDuration T>
+void Visit(SavepointVisitor& visitor, T& item);
+
+// std::chrono::time_point
+template<typename T>
+struct SavepointIsTimePointImpl : std::false_type {};
+template<typename Clock, typename Duration>
+struct SavepointIsTimePointImpl<std::chrono::time_point<Clock, Duration>> : std::true_type {};
+template<typename T>
+concept SavepointIsTimePoint = SavepointIsTimePointImpl<T>::value;
+template<SavepointIsTimePoint T>
 void Visit(SavepointVisitor& visitor, T& item);
 
 // <ranges>
@@ -218,7 +253,7 @@ concept SavepointIsEntity = std::is_base_of_v<SavepointEntity, T> || SavepointIs
 template<typename T>
 struct SavepointTypeName { static constexpr std::string_view kValue = SavepointTypeNameOf<T>(); };
 template<typename T> requires (!std::is_same_v<T, std::remove_cvref_t<T>>)
-struct SavepointTypeName<T> { static constexpr std::string_view kValue = SavepointTypeName<T>::kValue; };
+struct SavepointTypeName<T> { static constexpr std::string_view kValue = SavepointTypeName<std::remove_cvref_t<T>>::kValue; };
 template<typename T> requires SavepointIsStdPointer<T>
 struct SavepointTypeName<T> { static constexpr std::string_view kValue = SavepointTypeName<typename T::element_type>::kValue; };
 template<>

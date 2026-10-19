@@ -28,6 +28,13 @@ struct Settings
         ASSERT(Values[0] == 1);
         ASSERT(Values[1] == 2);
         ASSERT(Values[2] == 3);
+
+        Name = "file_v2";
+        ASSERT(File.Write(*this, kVersion));
+        Name.clear();
+        ASSERT(File.TryRead(*this));
+        ASSERT(Name == "file_v2");
+
         ASSERT(File.Delete());
         Name.clear();
         Values.clear();

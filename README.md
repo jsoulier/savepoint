@@ -10,7 +10,7 @@ Inspired by [cereal](https://github.com/USCiLab/cereal) and built on databases l
 - Inherited, nested, polymorphic members and types
 - Smart pointers, containers, tuples, random generators, etc
 - Portable saves across platforms
-- Opt-in thread safety and concurrent SQLite connections
+- Opt-in thread safety and concurrent readers
 - Backtraces
 - Integrated visual debugger
 
@@ -57,7 +57,7 @@ struct Entity : SavepointEntity
 int main()
 {
     Savepoint savepoint;
-    savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", SavepointVersion{});
+    savepoint.Open("savepoint.sqlite3", SavepointVersion{});
 
     Entity inEntity{"Player", {1, 2, 3}, 0.5f};
     savepoint.Write(inEntity, 0);

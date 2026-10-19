@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <limits>
 
 /**
  * @brief Used to uniquely identify a Savepoint entry.
@@ -16,16 +15,16 @@ class SavepointID
 {
     friend class Savepoint;
 
-    SavepointID(int value)
+    explicit SavepointID(int64_t value)
         : Value{value}
     {
     }
 
 public:
     /**
-     * @brief Reserved value for an invalid ID.
+     * @brief Reserved value for an invalid ID. sqlite3 never assigns it.
      */
-    static constexpr int kInvalidID = std::numeric_limits<int>::max();
+    static constexpr int64_t kInvalidID = 0;
 
     /**
      * @brief Default initialize an invalid ID.
@@ -58,7 +57,7 @@ public:
      *
      * @return The raw ID value.
      */
-    constexpr int GetValue() const
+    constexpr int64_t GetValue() const
     {
         return Value;
     }
@@ -71,7 +70,7 @@ public:
     void Visit(SavepointVisitor& visitor);
 
 private:
-    int Value;
+    int64_t Value;
 };
 
 namespace std
@@ -91,7 +90,7 @@ struct hash<SavepointID>
      */
     size_t operator()(const SavepointID& id) const noexcept
     {
-        return std::hash<uint32_t>{}(id.GetValue());
+        return std::hash<int64_t>{}(id.GetValue());
     }
 };
 

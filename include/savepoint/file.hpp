@@ -1,11 +1,14 @@
 #pragma once
 
+#include <savepoint/log.hpp>
 #include <savepoint/stream.hpp>
 #include <savepoint/visitor.hpp>
 
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <string>
+#include <system_error>
 #include <utility>
 
 /**
@@ -66,9 +69,25 @@ public:
         {
             return false;
         }
-        std::ofstream stream{Path, std::ios::binary | std::ios::trunc};
+        std::string path = Path + ".tmp";
+        std::ofstream stream{path, std::ios::binary | std::ios::trunc};
         stream << visitor;
-        return bool(stream);
+        stream.close();
+        std::error_code error;
+        if (!stream)
+        {
+            SavepointLog(std::format("Failed to write file: {}", path));
+            std::filesystem::remove(path, error);
+            return false;
+        }
+        std::filesystem::rename(path, Path, error);
+        if (error)
+        {
+            SavepointLog(std::format("Failed to replace file: {}, {}", Path, error.message()));
+            std::filesystem::remove(path, error);
+            return false;
+        }
+        return true;
     }
 
     /**

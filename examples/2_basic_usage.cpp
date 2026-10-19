@@ -46,7 +46,7 @@ int main()
 
     // Open a Savepoint (only SQLite3 is supported right now)
     Savepoint savepoint;
-    switch (savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion))
+    switch (savepoint.Open("savepoint.sqlite3", kVersion))
     {
     case SavepointStatus::Failed:
         // Failed to open for any reason

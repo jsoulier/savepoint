@@ -1,7 +1,7 @@
 // [17_concurrency]
 #include <savepoint/savepoint.hpp>
 
-#include <barrier>
+#include <atomic>
 #include <filesystem>
 #include <thread>
 #include <vector>
@@ -9,12 +9,8 @@
 #include "assert.hpp"
 
 static constexpr SavepointVersion kVersion{0, 0, 0};
-static constexpr int kThreadCount = 32;
-static constexpr int kIterationCount = 1000;
-
-// Each thread gets its own Savepoint instance so we don't need thread safety
-static constexpr bool kThreadSafe = false;
-static constexpr int kMaxWait = 10000;
+static constexpr int kEntityCount = 32;
+static constexpr int kIterationCount = 100;
 
 struct Entity
 {
@@ -32,59 +28,80 @@ int main()
 {
     std::filesystem::remove("savepoint.sqlite3");
 
-    Savepoint savepoint;
-    SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
+    Savepoint writer1;
+    SavepointStatus status = writer1.Open("savepoint.sqlite3", kVersion);
     ASSERT(status == SavepointStatus::New);
-    for (int id = 0; id < kThreadCount; id++)
+    for (int id = 0; id < kEntityCount; id++)
     {
-        Entity entity{id, id * 100};
-        savepoint.Write(entity, id);
+        Entity entity{id, id * 1000};
+        ASSERT(writer1.Write(entity, id));
     }
-    savepoint.Save();
-    savepoint.Close();
+    ASSERT(writer1.Save());
 
-    std::barrier barrier{kThreadCount};
-    std::vector<std::thread> threads;
-    for (int id = 0; id < kThreadCount; id++)
+    // writer2 fails since writer1 has the write lock
+    Savepoint writer2;
+    status = writer2.Open("savepoint.sqlite3", kVersion);
+    ASSERT(status == SavepointStatus::Failed);
+
+    std::atomic<bool> isWriting = true;
+    std::vector<std::thread> readers;
+    for (int reader = 0; reader < 8; reader++)
     {
-        threads.emplace_back([&barrier, id]()
+        readers.emplace_back([&isWriting]()
         {
             Savepoint savepoint;
-            SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion, false, kMaxWait);
+            SavepointStatus status = savepoint.Open("savepoint.sqlite3", kVersion, SavepointFlags::SQLite3 | SavepointFlags::Read);
             ASSERT(status == SavepointStatus::Existing);
 
-            barrier.arrive_and_wait();
-            for (int iteration = 0; iteration < kIterationCount; iteration++)
-            {
-                Entity inEntity{id, id * 1000 + iteration};
-                savepoint.Write(inEntity, id);
+            // Readers can't write
+            Entity inEntity{0, -1};
+            ASSERT(!savepoint.Write(inEntity, 0));
+            ASSERT(!savepoint.Save());
 
-                Entity outEntity;
-                ASSERT(savepoint.Read(outEntity, id));
-                ASSERT(outEntity.ID == inEntity.ID);
-                ASSERT(outEntity.Score == inEntity.Score);
+            std::vector<int> scores(kEntityCount, 0);
+            while (isWriting)
+            {
+                for (int id = 0; id < kEntityCount; id++)
+                {
+                    Entity outEntity;
+                    ASSERT(savepoint.Read(outEntity, id));
+                    ASSERT(outEntity.ID == id);
+                    ASSERT(outEntity.Score >= id * 1000 + scores[id]);
+                    ASSERT(outEntity.Score < id * 1000 + kIterationCount);
+                    scores[id] = outEntity.Score - id * 1000;
+                }
             }
-            savepoint.Save();
-            savepoint.Close();
+            ASSERT(savepoint.Close());
         });
     }
 
-    for (std::thread& thread : threads)
+    for (int iteration = 1; iteration < kIterationCount; iteration++)
     {
-        thread.join();
+        for (int id = 0; id < kEntityCount; id++)
+        {
+            Entity entity{id, id * 1000 + iteration};
+            ASSERT(writer1.Write(entity, id));
+        }
+        ASSERT(writer1.Save());
     }
+    isWriting = false;
+    for (std::thread& reader : readers)
+    {
+        reader.join();
+    }
+    ASSERT(writer1.Close());
 
-    status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
+    status = writer1.Open("savepoint.sqlite3", kVersion);
     ASSERT(status == SavepointStatus::Existing);
-    for (int id = 0; id < kThreadCount; id++)
+    for (int id = 0; id < kEntityCount; id++)
     {
         Entity entity;
-        ASSERT(savepoint.Read(entity, id));
+        ASSERT(writer1.Read(entity, id));
         ASSERT(entity.ID == id);
         ASSERT(entity.Score == id * 1000 + kIterationCount - 1);
     }
 
-    savepoint.Close();
+    ASSERT(writer1.Close());
     return 0;
 }
 // [17_concurrency]

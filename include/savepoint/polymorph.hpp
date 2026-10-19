@@ -60,14 +60,14 @@ public:
             } \
             SavepointRegistrar() \
             { \
-                SavepointAddPolymorphFunction(#T, Function); \
+                SavepointAddPolymorphFunction(SavepointTypeName<T>::kValue, Function); \
             } \
         }; \
         static inline SavepointRegistrar SavepointRegistrar; \
     public: \
         std::string_view GetClassName() const override \
         { \
-            return #T; \
+            return SavepointTypeName<T>::kValue; \
         } \
 
 /** @cond INTERNAL */
@@ -81,10 +81,7 @@ void SavepointAddPolymorphFunction(std::string_view string, const SavepointPolym
 // Get a factory function for polymorph types
 SavepointPolymorphFunction SavepointGetPolymorphFunction(std::string_view string);
 
-// Read the visitor to get the polymorph factory and create the polymorph instance
-SavepointPolymorph* SavepointReadPolymorph(SavepointVisitor& visitor);
-
-// Write the polymorph instance to the visitor
-void SavepointWritePolymorph(SavepointPolymorph* polymorph, SavepointVisitor& visitor);
+// Create a polymorph instance from its class name
+SavepointPolymorph* SavepointCreatePolymorph(std::string_view string);
 
 /** @endcond */

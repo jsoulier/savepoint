@@ -14,7 +14,10 @@
 #include <cstdint>
 #include <cstring>
 #include <format>
+#include <iomanip>
 #include <iosfwd>
+#include <limits>
+#include <locale>
 #include <memory>
 #include <sstream>
 #include <span>
@@ -58,7 +61,14 @@ enum class SavepointVisitorFlags : uint32_t
 class SavepointVisitor
 {
 private:
-    // Pooling to allow thread safety without having to reallocate the writers
+    // Whether the visitor is serializing or deserializing
+    enum class VisitorMode : uint8_t
+    {
+        Writing,
+        Reading,
+    };
+
+    // Pooling to allow thread safety without having to reallocate on write
     struct VisitorState
     {
         VisitorState()
@@ -71,6 +81,7 @@ private:
 
         void Clear()
         {
+            Mode = VisitorMode::Writing;
             Version = {};
             Flags = SavepointVisitorFlags::None;
             TypeID = 0;
@@ -89,6 +100,7 @@ private:
 #endif
         }
 
+        VisitorMode Mode;
         SavepointVersion Version;
         SavepointVisitorFlags Flags;
         uint32_t TypeID;
@@ -160,6 +172,7 @@ public:
 #endif
 
         SAVEPOINT_PROFILE_SCOPE();
+        State.Mode = VisitorMode::Writing;
         State.Version = version;
         State.Flags = SavepointVisitorFlags::None;
         if (std::endian::native == std::endian::big)
@@ -188,6 +201,7 @@ public:
      */
     void Begin(const void* data, int size)
     {
+        State.Mode = VisitorMode::Reading;
         State.Reader = {};
         State.Data.clear();
         State.Error = false;
@@ -517,13 +531,15 @@ public:
             if (IsWriting())
             {
                 std::stringstream stream;
-                stream << item;
+                stream.imbue(std::locale::classic());
+                stream << std::setprecision(std::numeric_limits<long double>::max_digits10) << item;
                 state = stream.str();
             }
             operator()(state);
             if (IsReading() && !HasError())
             {
                 std::stringstream stream{state};
+                stream.imbue(std::locale::classic());
                 if (!(stream >> item))
                 {
                     SavepointLog("Failed to read streamable type");
@@ -624,7 +640,7 @@ public:
      */
     bool IsReading() const
     {
-        return !State.Reader.empty();
+        return State.Mode == VisitorMode::Reading;
     }
 
     /**
@@ -634,7 +650,7 @@ public:
      */
     bool IsWriting() const
     {
-        return !IsReading();
+        return State.Mode == VisitorMode::Writing;
     }
 
     /**
@@ -830,8 +846,7 @@ public:
      */
     void Clear()
     {
-        State.Reader = {};
-        State.Data.clear();
+        State.Clear();
     }
 
     /**

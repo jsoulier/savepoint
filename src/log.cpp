@@ -13,14 +13,18 @@ static void DefaultLogFunction(std::string_view string)
     std::fputc('\n', stderr);
 }
 
-static SavepointLogFunction logFunction = DefaultLogFunction;
+static SavepointLogFunction& GetFunction()
+{
+    static SavepointLogFunction logFunction = DefaultLogFunction;
+    return logFunction;
+}
 
 void SavepointSetLogFunction(const SavepointLogFunction& function)
 {
-    logFunction = function;
+    GetFunction() = function;
 }
 
 void SavepointLog(std::string_view string)
 {
-    logFunction(string);
+    GetFunction()(string);
 }

@@ -6,9 +6,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "sqlite3.hpp"
+
+static constexpr int kSavepointBusyTimeout = 16; // 16ms
 
 static constexpr const char* kSQL =
     "CREATE TABLE IF NOT EXISTS status ("
@@ -43,8 +48,8 @@ static constexpr const char* kSQL =
     "    PRIMARY KEY (x, y, z, level)"
     ");"
     "CREATE INDEX IF NOT EXISTS entities_index ON entities (level);"
-    "CREATE INDEX IF NOT EXISTS tiles_2d_index ON tiles_2d (level);"
-    "CREATE INDEX IF NOT EXISTS tiles_3d_index ON tiles_3d (level);"
+    "CREATE INDEX IF NOT EXISTS tiles_2d_index ON tiles_2d (level, x, y);"
+    "CREATE INDEX IF NOT EXISTS tiles_3d_index ON tiles_3d (level, x, y, z);"
     " ";
 static constexpr const char* kWriteStatusSQL =
     "INSERT OR REPLACE INTO status (id) VALUES (0);";
@@ -66,6 +71,8 @@ static constexpr const char* kReadSQL =
     "SELECT data FROM header WHERE id = 0;";
 static constexpr const char* kReadLevelSQL =
     "SELECT data FROM levels WHERE level = ?;";
+static constexpr const char* kReadEntitySQL =
+    "SELECT data FROM entities WHERE id = ?;";
 static constexpr const char* kReadEntitiesSQL =
     "SELECT id, data FROM entities WHERE level = ?;";
 static constexpr const char* kReadAllTiles2DSQL =
@@ -78,8 +85,38 @@ static constexpr const char* kReadTile3DSQL =
     "SELECT data FROM tiles_3d WHERE level = ? AND x = ? AND y = ? AND z = ?;";
 static constexpr const char* kReadLevelsSQL =
     "SELECT level FROM levels UNION SELECT level FROM entities UNION SELECT level FROM tiles_2d UNION SELECT level FROM tiles_3d;";
+static constexpr const char* kReadRegionTiles2DSQL =
+    "SELECT x, y, data FROM tiles_2d WHERE level = ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ?;";
+static constexpr const char* kReadRegionTiles3DSQL =
+    "SELECT x, y, z, data FROM tiles_3d WHERE level = ? AND x BETWEEN ? AND ? AND y BETWEEN ? AND ? AND z BETWEEN ? AND ?;";
+static constexpr const char* kContainsEntitySQL =
+    "SELECT 1 FROM entities WHERE id = ?;";
+static constexpr const char* kContainsTile2DSQL =
+    "SELECT 1 FROM tiles_2d WHERE level = ? AND x = ? AND y = ?;";
+static constexpr const char* kContainsTile3DSQL =
+    "SELECT 1 FROM tiles_3d WHERE level = ? AND x = ? AND y = ? AND z = ?;";
+static constexpr const char* kCountEntitiesSQL =
+    "SELECT COUNT(*) FROM entities WHERE level = ?;";
+static constexpr const char* kCountTiles2DSQL =
+    "SELECT COUNT(*) FROM tiles_2d WHERE level = ?;";
+static constexpr const char* kCountTiles3DSQL =
+    "SELECT COUNT(*) FROM tiles_3d WHERE level = ?;";
+static constexpr const char* kDeleteSingletonSQL =
+    "DELETE FROM header WHERE id = 0;";
+static constexpr const char* kDeleteLevelSingletonSQL =
+    "DELETE FROM levels WHERE level = ?;";
 static constexpr const char* kDeleteEntitySQL =
     "DELETE FROM entities WHERE id = ?;";
+static constexpr const char* kDeleteTile2DSQL =
+    "DELETE FROM tiles_2d WHERE level = ? AND x = ? AND y = ?;";
+static constexpr const char* kDeleteTile3DSQL =
+    "DELETE FROM tiles_3d WHERE level = ? AND x = ? AND y = ? AND z = ?;";
+static constexpr const char* kDeleteLevelEntitiesSQL =
+    "DELETE FROM entities WHERE level = ?;";
+static constexpr const char* kDeleteLevelTiles2DSQL =
+    "DELETE FROM tiles_2d WHERE level = ?;";
+static constexpr const char* kDeleteLevelTiles3DSQL =
+    "DELETE FROM tiles_3d WHERE level = ?;";
 static constexpr const char* kClearLevelsSQL =
     "DELETE FROM levels;";
 static constexpr const char* kClearEntitiesSQL =
@@ -88,6 +125,14 @@ static constexpr const char* kClearTiles2DSQL =
     "DELETE FROM tiles_2d;";
 static constexpr const char* kClearTiles3DSQL =
     "DELETE FROM tiles_3d;";
+
+static std::vector<uint8_t> GetData(sqlite3_stmt* stmt, int column)
+{
+    // Required so that we don't clobber a statement if the user queries it recursively
+    const uint8_t* data = static_cast<const uint8_t*>(sqlite3_column_blob(stmt, column));
+    int size = sqlite3_column_bytes(stmt, column);
+    return std::vector<uint8_t>(data, data + size);
+}
 
 SavepointDriverSQLite3::SavepointDriverSQLite3()
     : ISavepointDriver()
@@ -103,13 +148,29 @@ SavepointDriverSQLite3::SavepointDriverSQLite3()
     , ReadStatusStmt{nullptr}
     , ReadStmt{nullptr}
     , ReadLevelStmt{nullptr}
+    , ReadEntityStmt{nullptr}
     , ReadEntitiesStmt{nullptr}
     , ReadAllTiles2DStmt{nullptr}
     , ReadAllTiles3DStmt{nullptr}
     , ReadTile2DStmt{nullptr}
     , ReadTile3DStmt{nullptr}
     , ReadLevelsStmt{nullptr}
+    , ReadRegionTiles2DStmt{nullptr}
+    , ReadRegionTiles3DStmt{nullptr}
+    , ContainsEntityStmt{nullptr}
+    , ContainsTile2DStmt{nullptr}
+    , ContainsTile3DStmt{nullptr}
+    , CountEntitiesStmt{nullptr}
+    , CountTiles2DStmt{nullptr}
+    , CountTiles3DStmt{nullptr}
+    , DeleteSingletonStmt{nullptr}
+    , DeleteLevelSingletonStmt{nullptr}
     , DeleteEntityStmt{nullptr}
+    , DeleteTile2DStmt{nullptr}
+    , DeleteTile3DStmt{nullptr}
+    , DeleteLevelEntitiesStmt{nullptr}
+    , DeleteLevelTiles2DStmt{nullptr}
+    , DeleteLevelTiles3DStmt{nullptr}
     , ClearLevelsStmt{nullptr}
     , ClearEntitiesStmt{nullptr}
     , ClearTiles2DStmt{nullptr}
@@ -117,37 +178,55 @@ SavepointDriverSQLite3::SavepointDriverSQLite3()
 {
 }
 
+SavepointDriverSQLite3::~SavepointDriverSQLite3()
+{
+    if (IsOpen())
+    {
+        Close();
+    }
+}
+
 std::string_view SavepointDriverSQLite3::GetName() const
 {
     return "sqlite3";
 }
 
-SavepointStatus SavepointDriverSQLite3::Open(std::string_view path, bool threadSafe, int maxWait)
+SavepointStatus SavepointDriverSQLite3::Open(const std::string& path, SavepointFlags flags)
 {
     SAVEPOINT_PROFILE_SCOPE();
-    Mutex.SetEnabled(threadSafe);
+    Mutex.SetEnabled((flags & SavepointFlags::ThreadSafe) == SavepointFlags::ThreadSafe);
     std::scoped_lock lock{Mutex};
-    if (sqlite3_open_v2(path.data(), &Handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX, nullptr) != SQLITE_OK)
+    const bool isReadOnly = (flags & SavepointFlags::Write) != SavepointFlags::Write;
+    int openFlags = SQLITE_OPEN_NOMUTEX;
+    if (isReadOnly)
+    {
+        openFlags |= SQLITE_OPEN_READONLY;
+    }
+    else
+    {
+        openFlags |= SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+    }
+    if (sqlite3_open_v2(path.c_str(), &Handle, openFlags, nullptr) != SQLITE_OK)
     {
         SavepointLog(std::format("Failed to open database: {}, {}", path, sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
     }
-    if (sqlite3_busy_timeout(Handle, maxWait) != SQLITE_OK)
+    if (sqlite3_busy_timeout(Handle, kSavepointBusyTimeout) != SQLITE_OK)
     {
         SavepointLog(std::format("Failed to set busy timeout: {}", sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
     }
-    if (sqlite3_exec(Handle, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr) != SQLITE_OK)
+    if (!isReadOnly && sqlite3_exec(Handle, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr) != SQLITE_OK)
     {
         SavepointLog(std::format("Failed to enable WAL: {}", sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
     }
-    if (sqlite3_wal_autocheckpoint(Handle, 2500) != SQLITE_OK)
+    if (!isReadOnly && sqlite3_wal_autocheckpoint(Handle, 2500) != SQLITE_OK)
     {
         SavepointLog(std::format("Failed to set wal_autocheckpoint: {}", sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
     }
-    if (sqlite3_exec(Handle, kSQL, nullptr, nullptr, nullptr) != SQLITE_OK)
+    if (!isReadOnly && sqlite3_exec(Handle, kSQL, nullptr, nullptr, nullptr) != SQLITE_OK)
     {
         SavepointLog(std::format("Failed to execute kSQL: {}", sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
@@ -202,6 +281,11 @@ SavepointStatus SavepointDriverSQLite3::Open(std::string_view path, bool threadS
         SavepointLog(std::format("Failed to prepare kReadLevelSQL: {}", sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
     }
+    if (sqlite3_prepare_v2(Handle, kReadEntitySQL, -1, &ReadEntityStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kReadEntitySQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
     if (sqlite3_prepare_v2(Handle, kReadEntitiesSQL, -1, &ReadEntitiesStmt, nullptr) != SQLITE_OK)
     {
         SavepointLog(std::format("Failed to prepare kReadEntitiesSQL: {}", sqlite3_errmsg(Handle)));
@@ -232,9 +316,84 @@ SavepointStatus SavepointDriverSQLite3::Open(std::string_view path, bool threadS
         SavepointLog(std::format("Failed to prepare kReadLevelsSQL: {}", sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
     }
+    if (sqlite3_prepare_v2(Handle, kReadRegionTiles2DSQL, -1, &ReadRegionTiles2DStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kReadRegionTiles2DSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kReadRegionTiles3DSQL, -1, &ReadRegionTiles3DStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kReadRegionTiles3DSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kContainsEntitySQL, -1, &ContainsEntityStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kContainsEntitySQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kContainsTile2DSQL, -1, &ContainsTile2DStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kContainsTile2DSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kContainsTile3DSQL, -1, &ContainsTile3DStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kContainsTile3DSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kCountEntitiesSQL, -1, &CountEntitiesStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kCountEntitiesSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kCountTiles2DSQL, -1, &CountTiles2DStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kCountTiles2DSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kCountTiles3DSQL, -1, &CountTiles3DStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kCountTiles3DSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kDeleteSingletonSQL, -1, &DeleteSingletonStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kDeleteSingletonSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kDeleteLevelSingletonSQL, -1, &DeleteLevelSingletonStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kDeleteLevelSingletonSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
     if (sqlite3_prepare_v2(Handle, kDeleteEntitySQL, -1, &DeleteEntityStmt, nullptr) != SQLITE_OK)
     {
         SavepointLog(std::format("Failed to prepare kDeleteEntitySQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kDeleteTile2DSQL, -1, &DeleteTile2DStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kDeleteTile2DSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kDeleteTile3DSQL, -1, &DeleteTile3DStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kDeleteTile3DSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kDeleteLevelEntitiesSQL, -1, &DeleteLevelEntitiesStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kDeleteLevelEntitiesSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kDeleteLevelTiles2DSQL, -1, &DeleteLevelTiles2DStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kDeleteLevelTiles2DSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kDeleteLevelTiles3DSQL, -1, &DeleteLevelTiles3DStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kDeleteLevelTiles3DSQL: {}", sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
     }
     if (sqlite3_prepare_v2(Handle, kClearLevelsSQL, -1, &ClearLevelsStmt, nullptr) != SQLITE_OK)
@@ -267,9 +426,9 @@ SavepointStatus SavepointDriverSQLite3::Open(std::string_view path, bool threadS
         status = SavepointStatus::New;
     }
     sqlite3_reset(ReadStatusStmt);
-    if (sqlite3_exec(Handle, "BEGIN;", nullptr, nullptr, nullptr) != SQLITE_OK)
+    if (!isReadOnly && sqlite3_exec(Handle, "BEGIN IMMEDIATE;", nullptr, nullptr, nullptr) != SQLITE_OK)
     {
-        SavepointLog(std::format("Failed to begin transaction: {}", sqlite3_errmsg(Handle)));
+        SavepointLog(std::format("Failed to take the write lock (is another writer open?): {}", sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
     }
     return status;
@@ -313,11 +472,11 @@ bool SavepointDriverSQLite3::Write(const void* data, int size, int level)
     return success;
 }
 
-int SavepointDriverSQLite3::Insert(const void* data, int size, int level)
+int64_t SavepointDriverSQLite3::Insert(const void* data, int size, int level)
 {
     SAVEPOINT_PROFILE_SCOPE();
     std::scoped_lock lock{Mutex};
-    int id = SavepointID::kInvalidID;
+    int64_t id = SavepointID::kInvalidID;
     sqlite3_bind_int(InsertEntityStmt, 1, level);
     sqlite3_bind_blob(InsertEntityStmt, 2, data, size, SQLITE_STATIC);
     if (sqlite3_step(InsertEntityStmt) != SQLITE_DONE)
@@ -332,14 +491,14 @@ int SavepointDriverSQLite3::Insert(const void* data, int size, int level)
     return id;
 }
 
-bool SavepointDriverSQLite3::Update(const void* data, int size, int id, int level)
+bool SavepointDriverSQLite3::Update(const void* data, int size, int64_t id, int level)
 {
     SAVEPOINT_PROFILE_SCOPE();
     std::scoped_lock lock{Mutex};
     bool success = false;
     sqlite3_bind_int(UpdateEntityStmt, 1, level);
     sqlite3_bind_blob(UpdateEntityStmt, 2, data, size, SQLITE_STATIC);
-    sqlite3_bind_int(UpdateEntityStmt, 3, id);
+    sqlite3_bind_int64(UpdateEntityStmt, 3, id);
     if (sqlite3_step(UpdateEntityStmt) != SQLITE_DONE)
     {
         SavepointLog(std::format("Failed to update entity: {}", sqlite3_errmsg(Handle)));
@@ -393,13 +552,17 @@ void SavepointDriverSQLite3::Read(const SavepointReadDataFunction& function)
 {
     SAVEPOINT_PROFILE_SCOPE();
     std::scoped_lock lock{Mutex};
-    if (sqlite3_step(ReadStmt) == SQLITE_ROW)
+    std::vector<uint8_t> data;
+    bool found = sqlite3_step(ReadStmt) == SQLITE_ROW;
+    if (found)
     {
-        const void* data = sqlite3_column_blob(ReadStmt, 0);
-        int size = sqlite3_column_bytes(ReadStmt, 0);
-        function(data, size);
+        data = GetData(ReadStmt, 0);
     }
     sqlite3_reset(ReadStmt);
+    if (found)
+    {
+        function(data.data(), int(data.size()));
+    }
 }
 
 void SavepointDriverSQLite3::Read(const SavepointReadDataFunction& function, int level)
@@ -407,61 +570,98 @@ void SavepointDriverSQLite3::Read(const SavepointReadDataFunction& function, int
     SAVEPOINT_PROFILE_SCOPE();
     std::scoped_lock lock{Mutex};
     sqlite3_bind_int(ReadLevelStmt, 1, level);
-    if (sqlite3_step(ReadLevelStmt) == SQLITE_ROW)
+    std::vector<uint8_t> data;
+    bool found = sqlite3_step(ReadLevelStmt) == SQLITE_ROW;
+    if (found)
     {
-        const void* data = sqlite3_column_blob(ReadLevelStmt, 0);
-        int size = sqlite3_column_bytes(ReadLevelStmt, 0);
-        function(data, size);
+        data = GetData(ReadLevelStmt, 0);
     }
     sqlite3_reset(ReadLevelStmt);
+    if (found)
+    {
+        function(data.data(), int(data.size()));
+    }
 }
 
 void SavepointDriverSQLite3::Read(const SavepointReadAllEntityDataFunction& function, int level)
 {
     SAVEPOINT_PROFILE_SCOPE();
     std::scoped_lock lock{Mutex};
+    struct Row
+    {
+        int64_t Id;
+        std::vector<uint8_t> Data;
+    };
+    std::vector<Row> rows;
     sqlite3_bind_int(ReadEntitiesStmt, 1, level);
     while (sqlite3_step(ReadEntitiesStmt) == SQLITE_ROW)
     {
-        int id = sqlite3_column_int(ReadEntitiesStmt, 0);
-        const void* data = sqlite3_column_blob(ReadEntitiesStmt, 1);
-        int size = sqlite3_column_bytes(ReadEntitiesStmt, 1);
-        function(data, size, id);
+        Row row;
+        row.Id = sqlite3_column_int64(ReadEntitiesStmt, 0);
+        row.Data = GetData(ReadEntitiesStmt, 1);
+        rows.push_back(std::move(row));
     }
     sqlite3_reset(ReadEntitiesStmt);
+    for (Row& row : rows)
+    {
+        function(row.Data.data(), int(row.Data.size()), row.Id);
+    }
 }
 
 void SavepointDriverSQLite3::Read(const SavepointReadAllTile2DDataFunction& function, int level)
 {
     SAVEPOINT_PROFILE_SCOPE();
     std::scoped_lock lock{Mutex};
+    struct Row
+    {
+        int X;
+        int Y;
+        std::vector<uint8_t> Data;
+    };
+    std::vector<Row> rows;
     sqlite3_bind_int(ReadAllTiles2DStmt, 1, level);
     while (sqlite3_step(ReadAllTiles2DStmt) == SQLITE_ROW)
     {
-        int x = sqlite3_column_int(ReadAllTiles2DStmt, 0);
-        int y = sqlite3_column_int(ReadAllTiles2DStmt, 1);
-        const void* data = sqlite3_column_blob(ReadAllTiles2DStmt, 2);
-        int size = sqlite3_column_bytes(ReadAllTiles2DStmt, 2);
-        function(data, size, x, y);
+        Row row;
+        row.X = sqlite3_column_int(ReadAllTiles2DStmt, 0);
+        row.Y = sqlite3_column_int(ReadAllTiles2DStmt, 1);
+        row.Data = GetData(ReadAllTiles2DStmt, 2);
+        rows.push_back(std::move(row));
     }
     sqlite3_reset(ReadAllTiles2DStmt);
+    for (Row& row : rows)
+    {
+        function(row.Data.data(), int(row.Data.size()), row.X, row.Y);
+    }
 }
 
 void SavepointDriverSQLite3::Read(const SavepointReadAllTile3DDataFunction& function, int level)
 {
     SAVEPOINT_PROFILE_SCOPE();
     std::scoped_lock lock{Mutex};
+    struct Row
+    {
+        int X;
+        int Y;
+        int Z;
+        std::vector<uint8_t> Data;
+    };
+    std::vector<Row> rows;
     sqlite3_bind_int(ReadAllTiles3DStmt, 1, level);
     while (sqlite3_step(ReadAllTiles3DStmt) == SQLITE_ROW)
     {
-        int x = sqlite3_column_int(ReadAllTiles3DStmt, 0);
-        int y = sqlite3_column_int(ReadAllTiles3DStmt, 1);
-        int z = sqlite3_column_int(ReadAllTiles3DStmt, 2);
-        const void* data = sqlite3_column_blob(ReadAllTiles3DStmt, 3);
-        int size = sqlite3_column_bytes(ReadAllTiles3DStmt, 3);
-        function(data, size, x, y, z);
+        Row row;
+        row.X = sqlite3_column_int(ReadAllTiles3DStmt, 0);
+        row.Y = sqlite3_column_int(ReadAllTiles3DStmt, 1);
+        row.Z = sqlite3_column_int(ReadAllTiles3DStmt, 2);
+        row.Data = GetData(ReadAllTiles3DStmt, 3);
+        rows.push_back(std::move(row));
     }
     sqlite3_reset(ReadAllTiles3DStmt);
+    for (Row& row : rows)
+    {
+        function(row.Data.data(), int(row.Data.size()), row.X, row.Y, row.Z);
+    }
 }
 
 void SavepointDriverSQLite3::Read(const SavepointReadTile2DDataFunction& function, int level, int x, int y)
@@ -471,13 +671,17 @@ void SavepointDriverSQLite3::Read(const SavepointReadTile2DDataFunction& functio
     sqlite3_bind_int(ReadTile2DStmt, 1, level);
     sqlite3_bind_int(ReadTile2DStmt, 2, x);
     sqlite3_bind_int(ReadTile2DStmt, 3, y);
-    if (sqlite3_step(ReadTile2DStmt) == SQLITE_ROW)
+    std::vector<uint8_t> data;
+    bool found = sqlite3_step(ReadTile2DStmt) == SQLITE_ROW;
+    if (found)
     {
-        const void* data = sqlite3_column_blob(ReadTile2DStmt, 0);
-        int size = sqlite3_column_bytes(ReadTile2DStmt, 0);
-        function(data, size);
+        data = GetData(ReadTile2DStmt, 0);
     }
     sqlite3_reset(ReadTile2DStmt);
+    if (found)
+    {
+        function(data.data(), int(data.size()));
+    }
 }
 
 void SavepointDriverSQLite3::Read(const SavepointReadTile3DDataFunction& function, int level, int x, int y, int z)
@@ -488,40 +692,268 @@ void SavepointDriverSQLite3::Read(const SavepointReadTile3DDataFunction& functio
     sqlite3_bind_int(ReadTile3DStmt, 2, x);
     sqlite3_bind_int(ReadTile3DStmt, 3, y);
     sqlite3_bind_int(ReadTile3DStmt, 4, z);
-    if (sqlite3_step(ReadTile3DStmt) == SQLITE_ROW)
+    std::vector<uint8_t> data;
+    bool found = sqlite3_step(ReadTile3DStmt) == SQLITE_ROW;
+    if (found)
     {
-        const void* data = sqlite3_column_blob(ReadTile3DStmt, 0);
-        int size = sqlite3_column_bytes(ReadTile3DStmt, 0);
-        function(data, size);
+        data = GetData(ReadTile3DStmt, 0);
     }
     sqlite3_reset(ReadTile3DStmt);
+    if (found)
+    {
+        function(data.data(), int(data.size()));
+    }
 }
 
 void SavepointDriverSQLite3::Read(const SavepointReadAllLevelsFunction& function)
 {
     SAVEPOINT_PROFILE_SCOPE();
     std::scoped_lock lock{Mutex};
+    std::vector<int> levels;
     while (sqlite3_step(ReadLevelsStmt) == SQLITE_ROW)
     {
-        int level = sqlite3_column_int(ReadLevelsStmt, 0);
-        function(level);
+        levels.push_back(sqlite3_column_int(ReadLevelsStmt, 0));
     }
     sqlite3_reset(ReadLevelsStmt);
+    for (int level : levels)
+    {
+        function(level);
+    }
 }
 
-void SavepointDriverSQLite3::Delete(int id)
+void SavepointDriverSQLite3::Read(const SavepointReadAllTile2DDataFunction& function, int level, int minX, int minY, int maxX, int maxY)
 {
     SAVEPOINT_PROFILE_SCOPE();
     std::scoped_lock lock{Mutex};
-    sqlite3_bind_int(DeleteEntityStmt, 1, id);
-    if (sqlite3_step(DeleteEntityStmt) != SQLITE_DONE)
+    struct Row
     {
-        SavepointLog(std::format("Failed to delete entity: {}", sqlite3_errmsg(Handle)));
+        int X;
+        int Y;
+        std::vector<uint8_t> Data;
+    };
+    std::vector<Row> rows;
+    sqlite3_bind_int(ReadRegionTiles2DStmt, 1, level);
+    sqlite3_bind_int(ReadRegionTiles2DStmt, 2, minX);
+    sqlite3_bind_int(ReadRegionTiles2DStmt, 3, maxX);
+    sqlite3_bind_int(ReadRegionTiles2DStmt, 4, minY);
+    sqlite3_bind_int(ReadRegionTiles2DStmt, 5, maxY);
+    while (sqlite3_step(ReadRegionTiles2DStmt) == SQLITE_ROW)
+    {
+        Row row;
+        row.X = sqlite3_column_int(ReadRegionTiles2DStmt, 0);
+        row.Y = sqlite3_column_int(ReadRegionTiles2DStmt, 1);
+        row.Data = GetData(ReadRegionTiles2DStmt, 2);
+        rows.push_back(std::move(row));
     }
-    sqlite3_reset(DeleteEntityStmt);
+    sqlite3_reset(ReadRegionTiles2DStmt);
+    for (Row& row : rows)
+    {
+        function(row.Data.data(), int(row.Data.size()), row.X, row.Y);
+    }
 }
 
-void SavepointDriverSQLite3::Close()
+void SavepointDriverSQLite3::Read(const SavepointReadAllTile3DDataFunction& function, int level, int minX, int minY, int minZ, int maxX, int maxY, int maxZ)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    struct Row
+    {
+        int X;
+        int Y;
+        int Z;
+        std::vector<uint8_t> Data;
+    };
+    std::vector<Row> rows;
+    sqlite3_bind_int(ReadRegionTiles3DStmt, 1, level);
+    sqlite3_bind_int(ReadRegionTiles3DStmt, 2, minX);
+    sqlite3_bind_int(ReadRegionTiles3DStmt, 3, maxX);
+    sqlite3_bind_int(ReadRegionTiles3DStmt, 4, minY);
+    sqlite3_bind_int(ReadRegionTiles3DStmt, 5, maxY);
+    sqlite3_bind_int(ReadRegionTiles3DStmt, 6, minZ);
+    sqlite3_bind_int(ReadRegionTiles3DStmt, 7, maxZ);
+    while (sqlite3_step(ReadRegionTiles3DStmt) == SQLITE_ROW)
+    {
+        Row row;
+        row.X = sqlite3_column_int(ReadRegionTiles3DStmt, 0);
+        row.Y = sqlite3_column_int(ReadRegionTiles3DStmt, 1);
+        row.Z = sqlite3_column_int(ReadRegionTiles3DStmt, 2);
+        row.Data = GetData(ReadRegionTiles3DStmt, 3);
+        rows.push_back(std::move(row));
+    }
+    sqlite3_reset(ReadRegionTiles3DStmt);
+    for (Row& row : rows)
+    {
+        function(row.Data.data(), int(row.Data.size()), row.X, row.Y, row.Z);
+    }
+}
+
+void SavepointDriverSQLite3::ReadEntity(const SavepointReadDataFunction& function, int64_t id)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    sqlite3_bind_int64(ReadEntityStmt, 1, id);
+    std::vector<uint8_t> data;
+    bool found = sqlite3_step(ReadEntityStmt) == SQLITE_ROW;
+    if (found)
+    {
+        data = GetData(ReadEntityStmt, 0);
+    }
+    sqlite3_reset(ReadEntityStmt);
+    if (found)
+    {
+        function(data.data(), int(data.size()));
+    }
+}
+
+bool SavepointDriverSQLite3::Contains(int64_t id)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    sqlite3_bind_int64(ContainsEntityStmt, 1, id);
+    bool success = sqlite3_step(ContainsEntityStmt) == SQLITE_ROW;
+    sqlite3_reset(ContainsEntityStmt);
+    return success;
+}
+
+bool SavepointDriverSQLite3::Contains(int x, int y, int level)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    sqlite3_bind_int(ContainsTile2DStmt, 1, level);
+    sqlite3_bind_int(ContainsTile2DStmt, 2, x);
+    sqlite3_bind_int(ContainsTile2DStmt, 3, y);
+    bool success = sqlite3_step(ContainsTile2DStmt) == SQLITE_ROW;
+    sqlite3_reset(ContainsTile2DStmt);
+    return success;
+}
+
+bool SavepointDriverSQLite3::Contains(int x, int y, int z, int level)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    sqlite3_bind_int(ContainsTile3DStmt, 1, level);
+    sqlite3_bind_int(ContainsTile3DStmt, 2, x);
+    sqlite3_bind_int(ContainsTile3DStmt, 3, y);
+    sqlite3_bind_int(ContainsTile3DStmt, 4, z);
+    bool success = sqlite3_step(ContainsTile3DStmt) == SQLITE_ROW;
+    sqlite3_reset(ContainsTile3DStmt);
+    return success;
+}
+
+static int StepCount(sqlite3* handle, sqlite3_stmt* stmt, int level)
+{
+    int count = 0;
+    sqlite3_bind_int(stmt, 1, level);
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        count = sqlite3_column_int(stmt, 0);
+    }
+    else
+    {
+        SavepointLog(std::format("Failed to count: {}", sqlite3_errmsg(handle)));
+    }
+    sqlite3_reset(stmt);
+    return count;
+}
+
+int SavepointDriverSQLite3::CountEntities(int level)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    return StepCount(Handle, CountEntitiesStmt, level);
+}
+
+int SavepointDriverSQLite3::CountTiles2D(int level)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    return StepCount(Handle, CountTiles2DStmt, level);
+}
+
+int SavepointDriverSQLite3::CountTiles3D(int level)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    return StepCount(Handle, CountTiles3DStmt, level);
+}
+
+// Steps a bound delete statement. True if any rows were deleted
+static bool StepDelete(sqlite3* handle, sqlite3_stmt* stmt, std::string_view name)
+{
+    bool success = false;
+    if (sqlite3_step(stmt) != SQLITE_DONE)
+    {
+        SavepointLog(std::format("Failed to delete {}: {}", name, sqlite3_errmsg(handle)));
+    }
+    else
+    {
+        success = sqlite3_changes(handle) > 0;
+    }
+    sqlite3_reset(stmt);
+    return success;
+}
+
+bool SavepointDriverSQLite3::Delete()
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    return StepDelete(Handle, DeleteSingletonStmt, "singleton");
+}
+
+bool SavepointDriverSQLite3::Delete(int level)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    sqlite3_bind_int(DeleteLevelSingletonStmt, 1, level);
+    return StepDelete(Handle, DeleteLevelSingletonStmt, "level singleton");
+}
+
+bool SavepointDriverSQLite3::Delete(int64_t id)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    sqlite3_bind_int64(DeleteEntityStmt, 1, id);
+    return StepDelete(Handle, DeleteEntityStmt, "entity");
+}
+
+bool SavepointDriverSQLite3::Delete(int x, int y, int level)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    sqlite3_bind_int(DeleteTile2DStmt, 1, level);
+    sqlite3_bind_int(DeleteTile2DStmt, 2, x);
+    sqlite3_bind_int(DeleteTile2DStmt, 3, y);
+    return StepDelete(Handle, DeleteTile2DStmt, "tile 2d");
+}
+
+bool SavepointDriverSQLite3::Delete(int x, int y, int z, int level)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    sqlite3_bind_int(DeleteTile3DStmt, 1, level);
+    sqlite3_bind_int(DeleteTile3DStmt, 2, x);
+    sqlite3_bind_int(DeleteTile3DStmt, 3, y);
+    sqlite3_bind_int(DeleteTile3DStmt, 4, z);
+    return StepDelete(Handle, DeleteTile3DStmt, "tile 3d");
+}
+
+bool SavepointDriverSQLite3::DeleteLevel(int level)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    bool success = false;
+    sqlite3_bind_int(DeleteLevelSingletonStmt, 1, level);
+    sqlite3_bind_int(DeleteLevelEntitiesStmt, 1, level);
+    sqlite3_bind_int(DeleteLevelTiles2DStmt, 1, level);
+    sqlite3_bind_int(DeleteLevelTiles3DStmt, 1, level);
+    success |= StepDelete(Handle, DeleteLevelSingletonStmt, "level singleton");
+    success |= StepDelete(Handle, DeleteLevelEntitiesStmt, "level entities");
+    success |= StepDelete(Handle, DeleteLevelTiles2DStmt, "level tiles 2d");
+    success |= StepDelete(Handle, DeleteLevelTiles3DStmt, "level tiles 3d");
+    return success;
+}
+
+bool SavepointDriverSQLite3::Close()
 {
     SAVEPOINT_PROFILE_SCOPE();
     std::scoped_lock lock{Mutex};
@@ -541,56 +973,142 @@ void SavepointDriverSQLite3::Close()
     sqlite3_finalize(ReadAllTiles2DStmt);
     sqlite3_finalize(ReadAllTiles3DStmt);
     sqlite3_finalize(ReadLevelsStmt);
+    sqlite3_finalize(ReadEntityStmt);
+    sqlite3_finalize(ReadRegionTiles2DStmt);
+    sqlite3_finalize(ReadRegionTiles3DStmt);
+    sqlite3_finalize(ContainsEntityStmt);
+    sqlite3_finalize(ContainsTile2DStmt);
+    sqlite3_finalize(ContainsTile3DStmt);
+    sqlite3_finalize(CountEntitiesStmt);
+    sqlite3_finalize(CountTiles2DStmt);
+    sqlite3_finalize(CountTiles3DStmt);
     sqlite3_finalize(DeleteEntityStmt);
+    sqlite3_finalize(DeleteSingletonStmt);
+    sqlite3_finalize(DeleteLevelSingletonStmt);
+    sqlite3_finalize(DeleteTile2DStmt);
+    sqlite3_finalize(DeleteTile3DStmt);
+    sqlite3_finalize(DeleteLevelEntitiesStmt);
+    sqlite3_finalize(DeleteLevelTiles2DStmt);
+    sqlite3_finalize(DeleteLevelTiles3DStmt);
     sqlite3_finalize(ClearLevelsStmt);
     sqlite3_finalize(ClearEntitiesStmt);
     sqlite3_finalize(ClearTiles2DStmt);
     sqlite3_finalize(ClearTiles3DStmt);
-    sqlite3_close(Handle);
+    bool success = true;
+    if (sqlite3_close(Handle) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to close database: {}", sqlite3_errmsg(Handle)));
+        success = false;
+    }
     Handle = nullptr;
+    return success;
 }
 
-void SavepointDriverSQLite3::Save()
+bool SavepointDriverSQLite3::Save()
 {
     SAVEPOINT_PROFILE_SCOPE();
     std::scoped_lock lock{Mutex};
+    bool success = true;
     if (sqlite3_step(WriteStatusStmt) != SQLITE_DONE)
     {
         SavepointLog(std::format("Failed to write status: {}", sqlite3_errmsg(Handle)));
+        success = false;
     }
     sqlite3_reset(WriteStatusStmt);
+    if (!success)
+    {
+        return false;
+    }
     if (sqlite3_exec(Handle, "COMMIT;", nullptr, nullptr, nullptr) != SQLITE_OK)
     {
         SavepointLog(std::format("Failed to end transaction: {}", sqlite3_errmsg(Handle)));
+        return false;
     }
-    if (sqlite3_exec(Handle, "BEGIN;", nullptr, nullptr, nullptr) != SQLITE_OK)
+    if (sqlite3_exec(Handle, "BEGIN IMMEDIATE;", nullptr, nullptr, nullptr) != SQLITE_OK)
     {
-        SavepointLog(std::format("Failed to begin transaction: {}", sqlite3_errmsg(Handle)));
+        SavepointLog(std::format("Failed to take the write lock again (is another writer open?): {}", sqlite3_errmsg(Handle)));
     }
+    return true;
 }
 
-void SavepointDriverSQLite3::Clear()
+bool SavepointDriverSQLite3::Rollback()
 {
     SAVEPOINT_PROFILE_SCOPE();
     std::scoped_lock lock{Mutex};
+    if (!sqlite3_get_autocommit(Handle) && sqlite3_exec(Handle, "ROLLBACK;", nullptr, nullptr, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to rollback transaction: {}", sqlite3_errmsg(Handle)));
+        return false;
+    }
+    if (sqlite3_exec(Handle, "BEGIN IMMEDIATE;", nullptr, nullptr, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to take the write lock (is another writer open?): {}", sqlite3_errmsg(Handle)));
+        return false;
+    }
+    return true;
+}
+
+bool SavepointDriverSQLite3::Backup(const std::string& path)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    sqlite3* source = nullptr;
+    sqlite3* destination = nullptr;
+    bool success = false;
+    if (sqlite3_open_v2(sqlite3_db_filename(Handle, "main"), &source, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to open backup source: {}", sqlite3_errmsg(source)));
+    }
+    else if (sqlite3_open_v2(path.c_str(), &destination, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to open backup destination: {}, {}", path, sqlite3_errmsg(destination)));
+    }
+    else if (sqlite3_backup* backup = sqlite3_backup_init(destination, "main", source, "main"))
+    {
+        success = sqlite3_backup_step(backup, -1) == SQLITE_DONE;
+        sqlite3_backup_finish(backup);
+        if (!success)
+        {
+            SavepointLog(std::format("Failed to backup: {}, {}", path, sqlite3_errmsg(destination)));
+        }
+    }
+    else
+    {
+        SavepointLog(std::format("Failed to start backup: {}, {}", path, sqlite3_errmsg(destination)));
+    }
+    sqlite3_close(destination);
+    sqlite3_close(source);
+    return success;
+}
+
+bool SavepointDriverSQLite3::Clear()
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    std::scoped_lock lock{Mutex};
+    bool success = true;
     if (sqlite3_step(ClearLevelsStmt) != SQLITE_DONE)
     {
         SavepointLog(std::format("Failed to clear levels: {}", sqlite3_errmsg(Handle)));
+        success = false;
     }
     sqlite3_reset(ClearLevelsStmt);
     if (sqlite3_step(ClearEntitiesStmt) != SQLITE_DONE)
     {
         SavepointLog(std::format("Failed to clear entities: {}", sqlite3_errmsg(Handle)));
+        success = false;
     }
     sqlite3_reset(ClearEntitiesStmt);
     if (sqlite3_step(ClearTiles2DStmt) != SQLITE_DONE)
     {
         SavepointLog(std::format("Failed to clear tiles 2d: {}", sqlite3_errmsg(Handle)));
+        success = false;
     }
     sqlite3_reset(ClearTiles2DStmt);
     if (sqlite3_step(ClearTiles3DStmt) != SQLITE_DONE)
     {
         SavepointLog(std::format("Failed to clear tiles 3d: {}", sqlite3_errmsg(Handle)));
+        success = false;
     }
     sqlite3_reset(ClearTiles3DStmt);
+    return success;
 }

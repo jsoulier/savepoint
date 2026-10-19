@@ -13,7 +13,7 @@ public:
 
 private:
     bool Enabled;
-    std::mutex Mutex;
+    std::recursive_mutex Mutex;
 #ifndef NDEBUG
     std::thread::id ThreadID;
 #endif

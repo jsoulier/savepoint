@@ -7,6 +7,9 @@
 #include <savepoint/visitor.hpp>
 
 #include <algorithm>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <format>
 #include <iterator>
 #include <ranges>
@@ -14,18 +17,19 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 /**
  * @brief Visit implementation for serializing std::unique_ptr and std::shared_ptr.
- * 
+ *
  * Pointers data and whether they are null are serialized. As such, pointers are
  * allowed to be nullptr and will be handled accordingly. Polymorphics are also
  * supported by storing type information alongside the aforementioned data. When
  * reading, the correct derived type will be instantiated and deserialized.
- * 
+ *
  * Raw pointers are unsupported, not because they couldn't be, but because it's
  * not needed and avoids potential pitfalls.
- * 
+ *
  * @tparam T The type of the pointer.
  * @param visitor The visitor.
  * @param item The pointer.
@@ -53,22 +57,38 @@ void Visit(SavepointVisitor& visitor, T& item)
             }
             return;
         }
-        if (!item)
+        if constexpr (std::is_base_of_v<SavepointPolymorph, ValueT>)
         {
-            if constexpr (std::is_base_of_v<SavepointPolymorph, ValueT>)
+            std::string className;
+            visitor(className);
+            if (visitor.HasError())
             {
-                item.reset(dynamic_cast<ValueT*>(SavepointReadPolymorph(visitor)));
                 return;
             }
-            else if constexpr (std::is_default_constructible_v<ValueT>)
+            if (!item || item->GetClassName() != className)
             {
-                item.reset(new ValueT());
-                if (!item)
+                SavepointPolymorph* polymorph = SavepointCreatePolymorph(className);
+                if (!polymorph)
                 {
-                    SavepointLog("Failed to allocate pointer");
                     visitor.SetError();
                     return;
                 }
+                ValueT* value = dynamic_cast<ValueT*>(polymorph);
+                if (!value)
+                {
+                    SavepointLog(std::format("Polymorph doesn't derive from {}: {}", SavepointTypeName<ValueT>::kValue, className));
+                    delete polymorph;
+                    visitor.SetError();
+                    return;
+                }
+                item.reset(value);
+            }
+        }
+        else if (!item)
+        {
+            if constexpr (std::is_default_constructible_v<ValueT>)
+            {
+                item.reset(new ValueT());
             }
             else
             {
@@ -76,15 +96,6 @@ void Visit(SavepointVisitor& visitor, T& item)
                 SavepointLog("No method to create pointer");
                 visitor.SetError();
                 return;
-            }
-        }
-        else
-        {
-            // Not using the derived interface but we still need to strip away that information
-            if constexpr (std::is_base_of_v<SavepointPolymorph, ValueT>)
-            {
-                std::string string;
-                visitor(string);
             }
         }
         visitor(*item);
@@ -97,12 +108,10 @@ void Visit(SavepointVisitor& visitor, T& item)
         {
             if constexpr (std::is_base_of_v<SavepointPolymorph, ValueT>)
             {
-                SavepointWritePolymorph(item.get(), visitor);
+                std::string_view className = item->GetClassName();
+                visitor(className);
             }
-            else
-            {
-                visitor(*item);
-            }
+            visitor(*item);
         }
     }
 }
@@ -162,6 +171,102 @@ void Visit(SavepointVisitor& visitor, T& item)
 }
 
 /**
+ * @brief Visit implementation for serializing an std::variant.
+ *
+ * @tparam T The type of the variant.
+ * @param visitor The visitor.
+ * @param item The variant.
+ */
+template<SavepointIsVariant T>
+void Visit(SavepointVisitor& visitor, T& item)
+{
+    if (visitor.IsWriting() && item.valueless_by_exception())
+    {
+        return;
+    }
+    int index = item.index();
+    visitor(index);
+    if (visitor.HasError())
+    {
+        return;
+    }
+    if (visitor.IsReading())
+    {
+        if (index < 0 || index >= std::variant_size_v<T>)
+        {
+            SavepointLog(std::format("Variant index is out of range: {}", index));
+            visitor.SetError();
+            return;
+        }
+        if (index != item.index())
+        {
+            [&]<size_t... Indices>(std::index_sequence<Indices...>)
+            {
+                auto emplace = [&]<size_t Index>()
+                {
+                    if (index == Index)
+                    {
+                        item.template emplace<Index>();
+                    }
+                };
+                (emplace.template operator()<Indices>(), ...);
+            }(std::make_index_sequence<std::variant_size_v<T>>{});
+        }
+    }
+    std::visit([&visitor](auto& value)
+    {
+        visitor(value);
+    },
+    item);
+}
+
+/**
+ * @brief Visit implementation for serializing an std::monostate. 
+ *
+ * @param visitor The visitor.
+ * @param item The monostate.
+ */
+inline void Visit(SavepointVisitor& visitor, std::monostate& item)
+{
+}
+
+/**
+ * @brief Visit implementation for serializing an std::chrono::duration.
+ *
+ * @tparam T The type of the duration.
+ * @param visitor The visitor.
+ * @param item The duration.
+ */
+template<SavepointIsDuration T>
+void Visit(SavepointVisitor& visitor, T& item)
+{
+    int64_t count = std::chrono::duration_cast<std::chrono::nanoseconds>(item).count();
+    visitor(count);
+    if (visitor.IsReading() && !visitor.HasError())
+    {
+        item = std::chrono::duration_cast<T>(std::chrono::nanoseconds{count});
+    }
+}
+
+/**
+ * @brief Visit implementation for serializing an std::chrono::time_point.
+ *
+ * @tparam T The type of the time point.
+ * @param visitor The visitor.
+ * @param item The time point.
+ */
+template<SavepointIsTimePoint T>
+void Visit(SavepointVisitor& visitor, T& item)
+{
+    typename T::duration duration = item.time_since_epoch();
+    visitor(duration);
+    if (visitor.IsReading() && !visitor.HasError())
+    {
+        item = T{duration};
+    }
+}
+
+/**
  * @brief Visit implementation for serializing containers.
  * 
  * @tparam T The type of the container.
@@ -217,11 +322,11 @@ void Visit(SavepointVisitor& visitor, T& item)
             int maxSize = std::ranges::size(item);
             if (size > maxSize)
             {
-                SavepointLog(std::format("Fixed range is too small: {} < {}", maxSize, size));
+                SavepointLog(std::format("Fixed range will be truncated: {} > {}", size, maxSize));
             }
             if (size < maxSize)
             {
-                SavepointLog(std::format("Fixed range will be truncated: {} < {}", maxSize, size));
+                SavepointLog(std::format("Fixed range will be partially read: {} < {}", size, maxSize));
             }
             maxSize = std::min(size, maxSize);
             if constexpr (SavepointIsCopyableRange<T>)

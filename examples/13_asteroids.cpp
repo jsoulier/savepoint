@@ -490,7 +490,7 @@ int main(int argc, char** argv)
     ImGui::CreateContext();
     ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer3_Init(renderer);
-    switch (savepoint.Open(SavepointDriver::SQLite3, "asteroids.sqlite3", SavepointVersion{}))
+    switch (savepoint.Open("asteroids.sqlite3", SavepointVersion{}))
     {
     case SavepointStatus::New:
         Restart();

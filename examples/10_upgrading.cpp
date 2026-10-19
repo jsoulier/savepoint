@@ -326,7 +326,7 @@ template<typename InT, typename OutT = InT>
 static void ReadWrite(std::string_view name, SavepointVersion version)
 {
     Savepoint savepoint;
-    SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", version);
+    SavepointStatus status = savepoint.Open("savepoint.sqlite3", version);
     ASSERT(status == SavepointStatus::New);
     InT inEntity;
     savepoint.Write(inEntity, 0);

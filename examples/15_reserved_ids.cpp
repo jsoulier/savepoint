@@ -54,7 +54,7 @@ int main()
     std::filesystem::remove("savepoint.sqlite3");
 
     Savepoint savepoint;
-    SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
+    SavepointStatus status = savepoint.Open("savepoint.sqlite3", kVersion);
     ASSERT(status == SavepointStatus::New);
 
     Player inPlayer{10};

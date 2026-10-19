@@ -60,7 +60,7 @@ static std::istream& operator>>(std::istream& stream, Object& object)
 int main()
 {
     SavepointVisitor writer;
-    Object input{42, "MyObject", {1.0f, 2.0f, 3.0f}};
+    Object input{42, "MyObject", {1.0f, 0.1f, 1.0f / 3.0f}};
     writer.Begin(input, SavepointVersion{});
 
     std::stringstream stream1{std::ios::in | std::ios::out | std::ios::binary};

@@ -12,6 +12,7 @@
 #include <format>
 #include <functional>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -100,7 +101,7 @@ public:
     /**
      * @brief Default initializes the connection.
      */
-    Savepoint() = default;
+    Savepoint();
 
     /**
      * @brief If connected, closes the connection.
@@ -129,17 +130,22 @@ public:
 
     /**
      * @brief Opens a new connection.
-     * 
-     * @param driver The driver to use for file operations.
+     *
      * @param path The path to the Savepoint file.
      * @param version The user's application version.
-     * @param threadSafe True if the Savepoint instance will be used from multiple threads.
-     * @param maxWait The number of milliseconds to wait when the database is busy.
+     * @param flags The flags to use (driver, read and/or write, thread safety).
      * @return The result of the attempt to open a connection.
      * @see Save
      * @see Close
      */
-    SavepointStatus Open(SavepointDriver driver, std::string_view path, SavepointVersion version, bool threadSafe = false, int maxWait = 0);
+    SavepointStatus Open(const std::string& path, SavepointVersion version, SavepointFlags flags = SavepointFlags::SQLite3 | SavepointFlags::ReadWrite);
+
+    /**
+     * @brief Check if the Savepoint is open.
+     *
+     * @return True if the Savepoint is open.
+     */
+    [[nodiscard]] bool IsOpen() const;
 
     /**
      * @brief Get the name of the underlying driver.
@@ -147,14 +153,14 @@ public:
      * @return The driver name or an empty string.
      * @see ISavepointDriver
      */
-    std::string_view GetDriverName() const;
+    [[nodiscard]] std::string_view GetDriverName() const;
 
     /**
      * @brief Write a singleton to the Savepoint.
-     * 
+     *
      * For storing information such as date and time, the user can write a
      * singleton with the assumption that only one entry exists.
-     * 
+     *
      * @tparam T The type to write.
      * @param item The item to write.
      * @return True if the item was written.
@@ -163,7 +169,7 @@ public:
     bool Write(T& item)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanWrite())
         {
             return false;
         }
@@ -193,7 +199,7 @@ public:
     bool Write(T& item, int level)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanWrite())
         {
             return false;
         }
@@ -209,23 +215,23 @@ public:
 
     /**
      * @brief Write an entity to the Savepoint.
-     * 
+     *
      * For items without a unique location, an ID can be used to ensure the item
      * gets a unique entry. If the ID is invalid, the ID will be written to and
      * a new entry will be inserted. If the ID is valid, an existing entry will
      * be updated (including the level).
-     * 
+     *
      * @tparam T The type to write.
      * @param item The item to write.
      * @param level The level.
-     * @return True if the entity was written. 
+     * @return True if the entity was written.
      * @see SavepointEntity
      */
     template<SavepointIsEntity T>
     bool Write(T& item, int level)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanWrite())
         {
             return false;
         }
@@ -264,10 +270,10 @@ public:
 
     /**
      * @brief Write a 2D tile to the Savepoint.
-     * 
+     *
      * Writes a tile to a entry using a key of x, y, and level. If an entry
      * already exists, the entry will be overridden.
-     * 
+     *
      * @tparam T The type to write.
      * @param item The item to write.
      * @param x The x location.
@@ -279,7 +285,7 @@ public:
     bool Write(T& item, int x, int y, int level)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanWrite())
         {
             return false;
         }
@@ -295,10 +301,10 @@ public:
 
     /**
      * @brief Write a 3D tile to the Savepoint.
-     * 
+     *
      * Writes a tile to a entry using a key of x, y, z, and level. If an entry
      * already exists, the entry will be overridden.
-     * 
+     *
      * @tparam T The type to write.
      * @param item The item to write.
      * @param x The x location.
@@ -311,7 +317,7 @@ public:
     bool Write(T& item, int x, int y, int z, int level)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanWrite())
         {
             return false;
         }
@@ -327,7 +333,7 @@ public:
 
     /**
      * @brief Read a singleton from the Savepoint.
-     * 
+     *
      * @tparam T The type to read.
      * @param item The item to read.
      * @return True if the singleton exists.
@@ -336,7 +342,7 @@ public:
     bool Read(T& item)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanRead())
         {
             return false;
         }
@@ -368,7 +374,7 @@ public:
     bool Read(T& item, int level)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanRead())
         {
             return false;
         }
@@ -388,8 +394,44 @@ public:
     }
 
     /**
+     * @brief Read an entity by its ID from the Savepoint.
+     *
+     * @tparam T The type to read.
+     * @param item The item to read.
+     * @param id The entity ID.
+     * @return True if the entity exists.
+     * @see SavepointEntity
+     */
+    template<SavepointIsEntity T>
+    bool Read(T& item, SavepointID id)
+    {
+        SAVEPOINT_PROFILE_SCOPE();
+        if (!CanRead() || !id.IsValid())
+        {
+            return false;
+        }
+        SavepointVisitor visitor;
+        bool success = false;
+        Driver->ReadEntity([&visitor, &item, &success](const void* data, int size)
+        {
+            visitor.Begin(data, size, item);
+            success = true;
+        }, id.Value);
+        if (visitor.HasError())
+        {
+            SavepointLog(std::format("Failed to read entity: id={}", id.Value));
+            return false;
+        }
+        if (success)
+        {
+            GetID(item) = id;
+        }
+        return success;
+    }
+
+    /**
      * @brief Read all entities in the specified level from the Savepoint.
-     * 
+     *
      * @tparam T The type to read.
      * @param function The function to use.
      * @param level The level.
@@ -399,12 +441,12 @@ public:
     void Read(const SavepointReadEntityFunction<T>& function, int level)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanRead())
         {
             return;
         }
         SavepointVisitor visitor;
-        Driver->Read([&visitor, &function, level](const void* data, int size, int id)
+        Driver->Read([&visitor, &function, level](const void* data, int size, int64_t id)
         {
             T item;
             visitor.Begin(data, size, item);
@@ -420,7 +462,7 @@ public:
 
     /**
      * @brief Read all 2D tiles in the specified level from the Savepoint.
-     * 
+     *
      * @tparam T The type to read.
      * @param function The function to use.
      * @param level The level.
@@ -429,7 +471,7 @@ public:
     void Read(const SavepointReadTile2DFunction<T>& function, int level)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanRead())
         {
             return;
         }
@@ -449,7 +491,7 @@ public:
 
     /**
      * @brief Read all 3D tiles in the specified level from the Savepoint.
-     * 
+     *
      * @tparam T The type to read.
      * @param function The function to use.
      * @param level The level.
@@ -458,7 +500,7 @@ public:
     void Read(const SavepointReadTile3DFunction<T>& function, int level)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanRead())
         {
             return;
         }
@@ -477,8 +519,76 @@ public:
     }
 
     /**
+     * @brief Read all 2D tiles inside a region of the specified level from the Savepoint.
+     *
+     * @tparam T The type to read.
+     * @param function The function to use.
+     * @param minX The minimum x location (inclusive).
+     * @param minY The minimum y location (inclusive).
+     * @param maxX The maximum x location (inclusive).
+     * @param maxY The maximum y location (inclusive).
+     * @param level The level.
+     */
+    template<SavepointIsVisitable T>
+    void Read(const SavepointReadTile2DFunction<T>& function, int minX, int minY, int maxX, int maxY, int level)
+    {
+        SAVEPOINT_PROFILE_SCOPE();
+        if (!CanRead())
+        {
+            return;
+        }
+        SavepointVisitor visitor;
+        Driver->Read([&visitor, &function, level](const void* data, int size, int x, int y)
+        {
+            T item;
+            visitor.Begin(data, size, item);
+            if (visitor.HasError())
+            {
+                SavepointLog(std::format("Failed to read tile: x={}, y={}, level={}", x, y, level));
+                return;
+            }
+            function(item, x, y);
+        }, level, minX, minY, maxX, maxY);
+    }
+
+    /**
+     * @brief Read all 3D tiles inside a region of the specified level from the Savepoint.
+     *
+     * @tparam T The type to read.
+     * @param function The function to use.
+     * @param minX The minimum x location (inclusive).
+     * @param minY The minimum y location (inclusive).
+     * @param minZ The minimum z location (inclusive).
+     * @param maxX The maximum x location (inclusive).
+     * @param maxY The maximum y location (inclusive).
+     * @param maxZ The maximum z location (inclusive).
+     * @param level The level.
+     */
+    template<SavepointIsVisitable T>
+    void Read(const SavepointReadTile3DFunction<T>& function, int minX, int minY, int minZ, int maxX, int maxY, int maxZ, int level)
+    {
+        SAVEPOINT_PROFILE_SCOPE();
+        if (!CanRead())
+        {
+            return;
+        }
+        SavepointVisitor visitor;
+        Driver->Read([&visitor, &function, level](const void* data, int size, int x, int y, int z)
+        {
+            T item;
+            visitor.Begin(data, size, item);
+            if (visitor.HasError())
+            {
+                SavepointLog(std::format("Failed to read tile: x={}, y={}, z={}, level={}", x, y, z, level));
+                return;
+            }
+            function(item, x, y, z);
+        }, level, minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
+    /**
      * @brief Read a 2D tile at the specified level and location from the Savepoint.
-     * 
+     *
      * @tparam T The type to read.
      * @param tile The tile to read.
      * @param x The x location.
@@ -490,7 +600,7 @@ public:
     bool Read(T& tile, int x, int y, int level)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanRead())
         {
             return false;
         }
@@ -511,7 +621,7 @@ public:
 
     /**
      * @brief Read a 3D tile at the specified level and location from the Savepoint.
-     * 
+     *
      * @tparam T The type to read.
      * @param tile The tile to read.
      * @param x The x location.
@@ -524,7 +634,7 @@ public:
     bool Read(T& tile, int x, int y, int z, int level)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanRead())
         {
             return false;
         }
@@ -548,10 +658,10 @@ public:
      * 
      * @return The levels.
      */
-    std::vector<int> GetLevels()
+    [[nodiscard]] std::vector<int> GetLevels()
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanRead())
         {
             return {};
         }
@@ -564,51 +674,182 @@ public:
     }
 
     /**
-     * @brief Deletes an entity from the Savepoint.
-     * 
+     * @brief Check if an entity exists in the Savepoint.
+     *
+     * @param id The entity ID.
+     * @return True if the entity exists.
+     * @see SavepointEntity
+     */
+    [[nodiscard]] bool Contains(SavepointID id);
+
+    /**
+     * @brief Check if a 2D tile exists in the Savepoint.
+     *
+     * @param x The x location.
+     * @param y The y location.
+     * @param level The level.
+     * @return True if the tile exists.
+     */
+    [[nodiscard]] bool Contains(int x, int y, int level);
+
+    /**
+     * @brief Check if a 3D tile exists in the Savepoint.
+     *
+     * @param x The x location.
+     * @param y The y location.
+     * @param z The z location.
+     * @param level The level.
+     * @return True if the tile exists.
+     */
+    [[nodiscard]] bool Contains(int x, int y, int z, int level);
+
+    /**
+     * @brief Get the number of entities in the specified level.
+     *
+     * @param level The level.
+     * @return The number of entities.
+     */
+    [[nodiscard]] int GetEntityCount(int level);
+
+    /**
+     * @brief Get the number of 2D tiles in the specified level.
+     *
+     * @param level The level.
+     * @return The number of 2D tiles.
+     */
+    [[nodiscard]] int GetTile2DCount(int level);
+
+    /**
+     * @brief Get the number of 3D tiles in the specified level.
+     *
+     * @param level The level.
+     * @return The number of 3D tiles.
+     */
+    [[nodiscard]] int GetTile3DCount(int level);
+
+    /**
+     * @brief Deletes an entity from the Savepoint and invalidates its ID.
+     *
      * @tparam T The type to delete
      * @param item The item to delete.
+     * @return True if the entity was deleted.
      * @see SavepointEntity
      */
     template<SavepointIsEntity T>
-    void Delete(T& item)
+    bool Delete(T& item)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
-        {
-            return;
-        }
         SavepointID& id = GetID(item);
-        if (id.IsValid())
-        {
-            Driver->Delete(id.Value);
-            id = SavepointID{};
-        }
+        bool success = Delete(id);
+        id = SavepointID{};
+        return success;
     }
-    
+
+    /**
+     * @brief Deletes the singleton from the Savepoint.
+     *
+     * @return True if the singleton was deleted.
+     */
+    bool Delete();
+
+    /**
+     * @brief Deletes the singleton at the specified level from the Savepoint.
+     *
+     * Entities and tiles in the level are kept.
+     *
+     * @param level The level.
+     * @return True if the singleton was deleted.
+     */
+    bool Delete(int level);
+
+    /**
+     * @brief Deletes an entity from the Savepoint.
+     *
+     * @param id The entity ID.
+     * @return True if the entity was deleted.
+     * @see SavepointEntity
+     */
+    bool Delete(SavepointID id);
+
+    /**
+     * @brief Deletes a 2D tile from the Savepoint.
+     *
+     * @param x The x location.
+     * @param y The y location.
+     * @param level The level.
+     * @return True if the tile was deleted.
+     */
+    bool Delete(int x, int y, int level);
+
+    /**
+     * @brief Deletes a 3D tile from the Savepoint.
+     *
+     * @param x The x location.
+     * @param y The y location.
+     * @param z The z location.
+     * @param level The level.
+     * @return True if the tile was deleted.
+     */
+    bool Delete(int x, int y, int z, int level);
+
+    /**
+     * @brief Deletes the singleton, entities, and tiles in the specified level.
+     *
+     * @param level The level.
+     * @return True if anything was deleted.
+     */
+    bool DeleteLevel(int level);
+
     /**
      * @brief Closes the connection. Does NOT call Savepoint::Save.
-     * 
+     *
+     * @return True if the connection was closed.
      * @see Save
      * @see Close
      */
-    void Close();
-    
+    bool Close();
+
     /**
      * @brief Save all pending changes.
-     * 
+     *
      * Commits the current transaction and starts a new one. The next time
      * Savepoint::Open is called, it will return SavepointStatus::Existing
      * instead of SavepointStatus::New.
      * 
      * @see Open
      */
-    void Save();
+    bool Save();
 
     /**
-     * @brief Remove all entities and tiles from the Savepoint.
+     * @brief Discard all pending changes since the last Savepoint::Save.
+     *
+     * Objects that were read or written keep their current values. Entity IDs
+     * assigned since the last save are no longer valid. If the write lock was
+     * lost (see Save), Rollback tries to take it again.
+     *
+     * @return True if the changes were discarded.
+     * @see Save
      */
-    void Clear();
+    bool Rollback();
+
+    /**
+     * @brief Copy the last saved state to another file.
+     *
+     * Pending changes aren't included. Useful for autosaves and copying save
+     * slots. The destination is overwritten.
+     *
+     * @param path The path to the destination file.
+     * @return True if the copy was written.
+     * @see Save
+     */
+    bool Backup(const std::string& path);
+
+    /**
+     * @brief Remove all entities, tiles, and level singletons from the Savepoint.
+     *
+     * @return True if the Savepoint was cleared.
+     */
+    bool Clear();
 
 #ifdef SAVEPOINT_DEBUGGER
 
@@ -652,12 +893,12 @@ public:
     void ReadDebug(const SavepointDebugEntityFunction& function, int level)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanRead())
         {
             return;
         }
         SavepointVisitor visitor;
-        Driver->Read([&visitor, &function](const void* data, int size, int id)
+        Driver->Read([&visitor, &function](const void* data, int size, int64_t id)
         {
             visitor.Begin(data, size);
             function(visitor.GetDebugNodes(), SavepointID{id});
@@ -673,7 +914,7 @@ public:
     void ReadDebug(const SavepointDebugTile2DFunction& function, int level)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanRead())
         {
             return;
         }
@@ -694,7 +935,7 @@ public:
     void ReadDebug(const SavepointDebugTile3DFunction& function, int level)
     {
         SAVEPOINT_PROFILE_SCOPE();
-        if (!Driver || !Driver->IsOpen())
+        if (!CanRead())
         {
             return;
         }
@@ -710,7 +951,7 @@ private:
     template<typename T>
     bool ReadDebugInternal(std::vector<SavepointDebugNode>& nodes, const T& read)
     {
-        if (!Driver || !Driver->IsOpen())
+        if (!CanRead())
         {
             return false;
         }
@@ -727,6 +968,10 @@ private:
 #endif
 
 private:
+    bool CanRead() const;
+    bool CanWrite() const;
+
+    // TODO: Bad hack 
     template<SavepointIsEntity T>
     static constexpr SavepointID& GetID(T& item)
     {
@@ -741,5 +986,6 @@ private:
     }
 
     SavepointVersion Version;
+    SavepointFlags Flags;
     std::unique_ptr<ISavepointDriver> Driver;
 };

@@ -2,6 +2,7 @@
 #include <savepoint/savepoint.hpp>
 
 #include <array>
+#include <chrono>
 #include <deque>
 #include <filesystem>
 #include <list>
@@ -14,6 +15,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "assert.hpp"
@@ -47,6 +49,10 @@ struct Entity : SavepointEntity
     std::list<int> List;
     std::string String;
     std::vector<std::unique_ptr<int>> VectorUniquePtr;
+    std::variant<std::monostate, int, std::string> Variant;
+    std::variant<std::monostate, int, std::string> Monostate;
+    std::chrono::milliseconds Duration;
+    std::chrono::system_clock::time_point TimePoint;
 
     void OnCreate()
     {
@@ -79,6 +85,10 @@ struct Entity : SavepointEntity
         List = {1, 2};
         String = "string";
         VectorUniquePtr.emplace_back(std::make_unique<int>(1));
+        Variant = "variant";
+        Monostate = {};
+        Duration = std::chrono::milliseconds{1500};
+        TimePoint = std::chrono::system_clock::now();
     }
 
     void Visit(SavepointVisitor& visitor)
@@ -108,6 +118,10 @@ struct Entity : SavepointEntity
         visitor(List);
         visitor(String);
         visitor(VectorUniquePtr);
+        visitor(Variant);
+        visitor(Monostate);
+        visitor(Duration);
+        visitor(TimePoint);
     }
 
     bool operator==(const Entity& other) const
@@ -141,7 +155,11 @@ struct Entity : SavepointEntity
             *SharedPtrVector[2] == *other.SharedPtrVector[2] &&
             List == other.List &&
             String == other.String &&
-            *VectorUniquePtr[0] == *other.VectorUniquePtr[0];
+            *VectorUniquePtr[0] == *other.VectorUniquePtr[0] &&
+            Variant == other.Variant &&
+            Monostate == other.Monostate &&
+            Duration == other.Duration &&
+            TimePoint == other.TimePoint;
     }
 };
 
@@ -150,7 +168,7 @@ int main()
     std::filesystem::remove("savepoint.sqlite3");
 
     Savepoint savepoint;
-    SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
+    SavepointStatus status = savepoint.Open("savepoint.sqlite3", kVersion);
     ASSERT(status == SavepointStatus::New);
 
     Entity inEntity;

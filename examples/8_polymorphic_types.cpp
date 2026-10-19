@@ -105,12 +105,40 @@ struct ItemEntity : public Entity
     SAVEPOINT_POLYMORPH(ItemEntity);
 };
 
+namespace Forest
+{
+
+struct BatEntity : public MobEntity
+{
+    SAVEPOINT_POLYMORPH(BatEntity);
+};
+
+}
+
+namespace Cave
+{
+
+struct BatEntity : public MobEntity
+{
+    SAVEPOINT_POLYMORPH(BatEntity);
+
+    bool Blind = true;
+
+    void Visit(SavepointVisitor& visitor) override
+    {
+        MobEntity::Visit(visitor);
+        visitor(Blind);
+    }
+};
+
+}
+
 int main()
 {
     std::filesystem::remove("savepoint.sqlite3");
 
     Savepoint savepoint;
-    SavepointStatus status = savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
+    SavepointStatus status = savepoint.Open("savepoint.sqlite3", kVersion);
     ASSERT(status == SavepointStatus::New);
 
     // Write concrete derived classes as usual
@@ -151,6 +179,28 @@ int main()
         reads++;
     }, 0);
     ASSERT(reads == 4);
+
+    std::shared_ptr<Forest::BatEntity> inForestBat = std::make_shared<Forest::BatEntity>();
+    std::shared_ptr<Cave::BatEntity> inCaveBat = std::make_shared<Cave::BatEntity>();
+    ASSERT(inForestBat->GetClassName() != inCaveBat->GetClassName());
+    savepoint.Write(inForestBat, 1);
+    savepoint.Write(inCaveBat, 1);
+    int forestBats = 0;
+    int caveBats = 0;
+    savepoint.Read<std::shared_ptr<Entity>>([&](std::shared_ptr<Entity>& entity)
+    {
+        if (dynamic_cast<Forest::BatEntity*>(entity.get()))
+        {
+            forestBats++;
+        }
+        else if (Cave::BatEntity* outCaveBat = dynamic_cast<Cave::BatEntity*>(entity.get()))
+        {
+            ASSERT(outCaveBat->Blind);
+            caveBats++;
+        }
+    }, 1);
+    ASSERT(forestBats == 1);
+    ASSERT(caveBats == 1);
 
     savepoint.Close();
     return 0;

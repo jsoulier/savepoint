@@ -88,7 +88,7 @@ int main()
     std::filesystem::remove("savepoint.sqlite3");
 
     Savepoint savepoint;
-    savepoint.Open(SavepointDriver::SQLite3, "savepoint.sqlite3", kVersion);
+    savepoint.Open("savepoint.sqlite3", kVersion);
 
     Entity inEntity;
     inEntity.OnCreate();
@@ -117,9 +117,9 @@ int main()
     savepoint.Read<PartialReadEntity>([](PartialReadEntity& outEntity) { ASSERT(false); }, 0);
 
     // The write failed so there's nothing to read
-    savepoint.Delete(inEntity);
+    ASSERT(savepoint.Delete(inEntity));
     WriteEntity inWriteEntity;
-    savepoint.Write(inWriteEntity, 0);
+    ASSERT(!savepoint.Write(inWriteEntity, 0));
     savepoint.Read<WriteEntity>([](WriteEntity& outWriteEntity) { ASSERT(false); }, 0);
 
     savepoint.Write(inEntity, 0);

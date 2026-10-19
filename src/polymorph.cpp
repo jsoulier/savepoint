@@ -26,34 +26,14 @@ SavepointPolymorphFunction SavepointGetPolymorphFunction(std::string_view string
     return GetOr<SavepointPolymorphFunction>(GetFunctions(), string);
 }
 
-SavepointPolymorph* SavepointReadPolymorph(SavepointVisitor& visitor)
+SavepointPolymorph* SavepointCreatePolymorph(std::string_view string)
 {
     SAVEPOINT_PROFILE_SCOPE();
-    std::string string;
-    visitor(string);
     SavepointPolymorphFunction function = SavepointGetPolymorphFunction(string);
-    if (function == nullptr)
+    if (!function)
     {
         SavepointLog(std::format("Failed to find polymorph string: {}", string));
-        visitor.SetError();
         return nullptr;
     }
-    SavepointPolymorph* polymorph = function();
-    if (polymorph)
-    {
-        visitor(*polymorph);
-    }
-    else
-    {
-        SavepointLog(std::format("Failed to allocate polymorph: {}", string));
-        visitor.SetError();
-    }
-    return polymorph;
-}
-
-void SavepointWritePolymorph(SavepointPolymorph* polymorph, SavepointVisitor& visitor)
-{
-    std::string_view string = polymorph->GetClassName();
-    visitor(string);
-    visitor(*polymorph);
+    return function();
 }

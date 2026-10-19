@@ -57,7 +57,7 @@ public:
             ImGui::Text("level %d", Level);
             break;
         case SavepointDebuggerMode::Entities:
-            ImGui::Text("id %u, level %d", ID.GetValue(), Level);
+            ImGui::TextUnformatted(std::format("id {}, level {}", ID.GetValue(), Level).c_str());
             break;
         case SavepointDebuggerMode::Tiles2D:
             ImGui::Text("x %d, y %d, level %d", X, Y, Level);
