@@ -38,8 +38,9 @@ int main()
     entity.Score = 100;
     ASSERT(savepoint.Write(entity, 0));
     ASSERT(savepoint.Save());
+    SavepointID id = entity.GetID();
     entity = {};
-    ASSERT(savepoint.Read(entity, entity.GetID()));
+    ASSERT(savepoint.Read(entity, id));
     ASSERT(entity.Score == 100);
 
     Savepoint backup;
@@ -47,7 +48,7 @@ int main()
     ASSERT(status == SavepointStatus::Existing);
     ASSERT(backup.GetEntityCount(0) == 1);
     entity = {};
-    ASSERT(backup.Read(entity, entity.GetID()));
+    ASSERT(backup.Read(entity, id));
     ASSERT(entity.Score == 42);
     ASSERT(backup.Close());
 
