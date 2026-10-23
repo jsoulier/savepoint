@@ -50,7 +50,8 @@ struct Entity : SavepointEntity
     std::string String;
     std::vector<std::unique_ptr<int>> VectorUniquePtr;
     std::variant<std::monostate, int, std::string> Variant;
-    std::variant<std::monostate, int, std::string> Monostate;
+    std::variant<std::monostate, int, std::string> MonostateVariant;
+    std::vector<std::monostate> MonostateVector;
     std::chrono::milliseconds Duration;
     std::chrono::system_clock::time_point TimePoint;
 
@@ -86,7 +87,8 @@ struct Entity : SavepointEntity
         String = "string";
         VectorUniquePtr.emplace_back(std::make_unique<int>(1));
         Variant = "variant";
-        Monostate = {};
+        MonostateVariant = {};
+        MonostateVector.resize(3);
         Duration = std::chrono::milliseconds{1500};
         TimePoint = std::chrono::system_clock::now();
     }
@@ -119,7 +121,8 @@ struct Entity : SavepointEntity
         visitor(String);
         visitor(VectorUniquePtr);
         visitor(Variant);
-        visitor(Monostate);
+        visitor(MonostateVariant);
+        visitor(MonostateVector);
         visitor(Duration);
         visitor(TimePoint);
     }
@@ -157,7 +160,8 @@ struct Entity : SavepointEntity
             String == other.String &&
             *VectorUniquePtr[0] == *other.VectorUniquePtr[0] &&
             Variant == other.Variant &&
-            Monostate == other.Monostate &&
+            MonostateVariant == other.MonostateVariant &&
+            MonostateVector == other.MonostateVector &&
             Duration == other.Duration &&
             TimePoint == other.TimePoint;
     }

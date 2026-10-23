@@ -286,6 +286,10 @@ void Visit(SavepointVisitor& visitor, T& item)
         }
     }
     visitor(size);
+    if (visitor.HasError())
+    {
+        return;
+    }
     if (size < 0)
     {
         SavepointLog("Container size was less than zero");
@@ -294,22 +298,21 @@ void Visit(SavepointVisitor& visitor, T& item)
     }
     if (visitor.IsReading())
     {
-        // Can detect when we read garbage and would iterate forever
-        if (size > visitor.GetSize())
-        {
-            SavepointLog("Tried to read past visitor");
-            visitor.SetError();
-            return;
-        }
         if constexpr (SavepointIsCopyableRange<T> && SavepointIsResizableRange<T>)
         {
+            if (size > visitor.GetSize())
+            {
+                SavepointLog("Tried to read past visitor");
+                visitor.SetError();
+                return;
+            }
             item.resize(size);
             visitor(std::ranges::data(item), size);
         }
         else if constexpr (SavepointIsDynamicRange<T>)
         {
             auto inserter = std::inserter(item, std::ranges::end(item));
-            for (int i = 0; i < size; i++)
+            for (int i = 0; i < size && !visitor.HasError(); i++)
             {
                 // TODO: mutable iterators
                 ValueT element;
@@ -335,12 +338,12 @@ void Visit(SavepointVisitor& visitor, T& item)
             }
             else
             {
-                for (int i = 0; i < maxSize; i++)
+                for (int i = 0; i < maxSize && !visitor.HasError(); i++)
                 {
                     visitor(item[i]);
                 }
             }
-            for (; maxSize < size; maxSize++)
+            for (; maxSize < size && !visitor.HasError(); maxSize++)
             {
                 visitor.Skip<ValueT>();
             }

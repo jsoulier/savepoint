@@ -232,6 +232,7 @@ public:
     {
         SAVEPOINT_PROFILE_SCOPE();
         Begin(data, size);
+        ValidateTypeID<T>();
         operator()(item);
         if (!IsEmpty())
         {
@@ -241,6 +242,29 @@ public:
     }
 
 private:
+    template<typename T>
+    void ValidateTypeID()
+    {
+        if constexpr (SavepointIsStdPointer<T>)
+        {
+            // For potentially hitting the is_polymorphic_v
+            ValidateTypeID<typename T::element_type>();
+        }
+        else if constexpr (!std::is_polymorphic_v<T>)
+        {
+            static constexpr uint32_t kTypeID = SavepointTypeID<T>();
+            if (HasError() || kTypeID == 0 || State.TypeID == 0)
+            {
+                return;
+            }
+            if (State.TypeID != kTypeID)
+            {
+                SavepointLog(std::format("Type mismatch: expected {} ({}), got {}", SavepointTypeName<T>::kValue, kTypeID, State.TypeID));
+                SetError();
+            }
+        }
+    }
+
     void BeginInternal()
     {
         SAVEPOINT_PROFILE_SCOPE();

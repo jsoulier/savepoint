@@ -322,6 +322,15 @@ struct ZombieV4 : EntityV4
     }
 };
 
+// Since we're reading/writing different types we need to ensure Savepoint doesn't reject it
+template<> struct SavepointTypeName<EntityV1> { static constexpr std::string_view kValue = "Entity"; };
+template<> struct SavepointTypeName<EntityV2> { static constexpr std::string_view kValue = "Entity"; };
+template<> struct SavepointTypeName<EntityV4> { static constexpr std::string_view kValue = "Entity"; };
+template<> struct SavepointTypeName<ZombieV1> { static constexpr std::string_view kValue = "Zombie"; };
+template<> struct SavepointTypeName<ZombieV2> { static constexpr std::string_view kValue = "Zombie"; };
+template<> struct SavepointTypeName<ZombieV3> { static constexpr std::string_view kValue = "Zombie"; };
+template<> struct SavepointTypeName<ZombieV4> { static constexpr std::string_view kValue = "Zombie"; };
+
 template<typename InT, typename OutT = InT>
 static void ReadWrite(std::string_view name, SavepointVersion version)
 {
