@@ -110,7 +110,7 @@ namespace Forest
 
 struct BatEntity : public MobEntity
 {
-    SAVEPOINT_POLYMORPH(BatEntity);
+    SAVEPOINT_POLYMORPH(Forest::BatEntity);
 };
 
 }
@@ -120,7 +120,7 @@ namespace Cave
 
 struct BatEntity : public MobEntity
 {
-    SAVEPOINT_POLYMORPH(BatEntity);
+    SAVEPOINT_POLYMORPH(Cave::BatEntity);
 
     bool Blind = true;
 

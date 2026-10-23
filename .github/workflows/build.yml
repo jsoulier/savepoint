@@ -18,6 +18,9 @@ jobs:
         debugger:
           - ON
           - OFF
+        validation:
+          - ON
+          - OFF
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -64,7 +67,7 @@ jobs:
             libthai-dev
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DSAVEPOINT_DEBUGGER=${{ matrix.debugger }}
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DSAVEPOINT_DEBUGGER=${{ matrix.debugger }} -DSAVEPOINT_VALIDATION=${{ matrix.validation }}
 
       - name: Build
         run: cmake --build build --config ${{ matrix.config }} -j 8

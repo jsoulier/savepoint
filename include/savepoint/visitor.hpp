@@ -245,6 +245,7 @@ private:
     template<typename T>
     void ValidateTypeID()
     {
+#ifdef SAVEPOINT_VALIDATION
         if constexpr (SavepointIsStdPointer<T>)
         {
             // For potentially hitting the is_polymorphic_v
@@ -263,6 +264,7 @@ private:
                 SetError();
             }
         }
+#endif
     }
 
     void BeginInternal()

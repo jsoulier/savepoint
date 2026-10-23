@@ -46,7 +46,7 @@ public:
  * Implements GetClassName and automatically registers a factory function
  * for the derived class. It allows a SavepointVisitor to to create an instance of
  * the derived class whilst only knowing its class name.
- * 
+ *
  * @param T The class type.
  * @see SavepointPolymorph
  */
@@ -60,14 +60,14 @@ public:
             } \
             SavepointRegistrar() \
             { \
-                SavepointAddPolymorphFunction(SavepointTypeName<T>::kValue, Function); \
+                SavepointAddPolymorphFunction(#T, Function); \
             } \
         }; \
         static inline SavepointRegistrar SavepointRegistrar; \
     public: \
         std::string_view GetClassName() const override \
         { \
-            return SavepointTypeName<T>::kValue; \
+            return #T; \
         } \
 
 /** @cond INTERNAL */

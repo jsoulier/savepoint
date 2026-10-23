@@ -5,6 +5,7 @@ option(SAVEPOINT_NULL "Enable the null driver" ON)
 option(SAVEPOINT_SQLITE3 "Enable the SQLite3 driver" ON)
 option(SAVEPOINT_DEBUGGER "Enable debugging" OFF)
 option(SAVEPOINT_PROFILE "Enable profiling" OFF)
+option(SAVEPOINT_VALIDATION "Enable non-portable type validation" OFF)
 
 add_library(savepoint
     src/database.cpp
@@ -20,6 +21,9 @@ add_library(savepoint::savepoint ALIAS savepoint)
 target_include_directories(savepoint PUBLIC include)
 if(SAVEPOINT_DEBUGGER)
     target_compile_definitions(savepoint PUBLIC SAVEPOINT_DEBUGGER)
+endif()
+if(SAVEPOINT_VALIDATION)
+    target_compile_definitions(savepoint PUBLIC SAVEPOINT_VALIDATION)
 endif()
 if(SAVEPOINT_PROFILE)
     set(TRACY_ENABLE ON)
