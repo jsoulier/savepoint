@@ -1,4 +1,4 @@
-// [23_rollback]
+// [22_rollback]
 #include <savepoint/savepoint.hpp>
 
 #include <filesystem>
@@ -60,8 +60,8 @@ int main()
 
     player.Health = 5;
     ASSERT(savepoint.Write(player, 0));
-    Entity enemy;
-    ASSERT(savepoint.Write(enemy, 0));
+    Entity oldEnemy;
+    ASSERT(savepoint.Write(oldEnemy, 0));
     ASSERT(savepoint.Delete(0, 0, 0));
     ASSERT(savepoint.Write(tile, 1, 1, 0));
     world.Day = 2;
@@ -73,24 +73,44 @@ int main()
     ASSERT(savepoint.Read(player, player.GetID()));
     ASSERT(player.Health == 10);
     ASSERT(savepoint.GetEntityCount(0) == 1);
-    ASSERT(!savepoint.Contains(enemy.GetID()));
+    ASSERT(!savepoint.Contains(oldEnemy.GetID()));
     ASSERT(savepoint.Contains(0, 0, 0));
     ASSERT(!savepoint.Contains(1, 1, 0));
     ASSERT(savepoint.Read(world));
     ASSERT(world.Day == 1);
 
-    ASSERT(enemy.GetID().IsValid());
-    ASSERT(savepoint.Write(enemy, 0));
+    ASSERT(oldEnemy.GetID().IsValid());
+    ASSERT(savepoint.Write(oldEnemy, 0));
     ASSERT(savepoint.GetEntityCount(0) == 2);
 
+    Entity newEnemy;
+    newEnemy.Health = 7;
+    ASSERT(savepoint.Write(newEnemy, 0));
+    ASSERT(newEnemy.GetID() != oldEnemy.GetID());
+    ASSERT(savepoint.GetEntityCount(0) == 3);
+    ASSERT(savepoint.Read(newEnemy, newEnemy.GetID()));
+    ASSERT(newEnemy.Health == 7);
+
+    Entity reserved;
+    ASSERT(savepoint.Reserve(reserved));
     ASSERT(savepoint.Save());
     ASSERT(savepoint.Close());
     status = savepoint.Open("savepoint.sqlite3", kVersion);
     ASSERT(status == SavepointStatus::Existing);
-    ASSERT(savepoint.GetEntityCount(0) == 2);
+    ASSERT(savepoint.GetEntityCount(0) == 3);
+    Entity later;
+    ASSERT(savepoint.Reserve(later));
+    ASSERT(later.GetID() > reserved.GetID());
 
     ASSERT(savepoint.Rollback());
-    ASSERT(savepoint.GetEntityCount(0) == 2);
+    ASSERT(savepoint.GetEntityCount(0) == 3);
+
+    Entity discarded;
+    ASSERT(savepoint.Write(discarded, 0));
+    ASSERT(savepoint.Rollback());
+    Entity fresh;
+    ASSERT(savepoint.Write(fresh, 0));
+    ASSERT(fresh.GetID() != discarded.GetID());
 
     Savepoint reader;
     status = reader.Open("savepoint.sqlite3", kVersion, SavepointFlags::SQLite3 | SavepointFlags::Read);
@@ -101,4 +121,4 @@ int main()
     ASSERT(savepoint.Close());
     return 0;
 }
-// [23_rollback]
+// [22_rollback]

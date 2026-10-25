@@ -100,6 +100,7 @@ int main()
         {
             ASSERT(outEntity == inEntity);
             reads++;
+            return true;
         }, 0);
         return reads == 1;
     };
@@ -108,19 +109,19 @@ int main()
     ASSERT(hasSingleEntity());
 
     // The read failed and the callback isn't invoked
-    savepoint.Read<ReadEntity>([](ReadEntity& outEntity) { ASSERT(false); }, 0);
+    savepoint.Read<ReadEntity>([](ReadEntity& outEntity) { ASSERT(false); return true; }, 0);
 
     // Reading past the end of the visitor caused a failure and the callback isn't invoked
-    savepoint.Read<ReadPastEntity>([](ReadPastEntity& outEntity) { ASSERT(false); }, 0);
+    savepoint.Read<ReadPastEntity>([](ReadPastEntity& outEntity) { ASSERT(false); return true; }, 0);
 
     // Not reading the entire visitor caused a failure and the callback isn't invoked
-    savepoint.Read<PartialReadEntity>([](PartialReadEntity& outEntity) { ASSERT(false); }, 0);
+    savepoint.Read<PartialReadEntity>([](PartialReadEntity& outEntity) { ASSERT(false); return true; }, 0);
 
     // The write failed so there's nothing to read
     ASSERT(savepoint.Delete(inEntity));
     WriteEntity inWriteEntity;
     ASSERT(!savepoint.Write(inWriteEntity, 0));
-    savepoint.Read<WriteEntity>([](WriteEntity& outWriteEntity) { ASSERT(false); }, 0);
+    savepoint.Read<WriteEntity>([](WriteEntity& outWriteEntity) { ASSERT(false); return true; }, 0);
 
     savepoint.Write(inEntity, 0);
     ASSERT(hasSingleEntity());

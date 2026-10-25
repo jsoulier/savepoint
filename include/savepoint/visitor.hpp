@@ -30,11 +30,11 @@
 /**
  * @brief Flags describing the visitor data.
  */
-enum class SavepointVisitorFlags : uint32_t
+enum class SavepointVisitorFlags : uint8_t
 {
     None = 0,             /**< No flags. */
     BigEndian = 1u << 0,  /**< Written on a big-endian platform. */
-    // 31 bits reserved for future use
+    Reserved = 1u << 7,   /**< Reserved. */
 };
 
 /**
@@ -46,15 +46,10 @@ enum class SavepointVisitorFlags : uint32_t
  * 2. Writing to the Savepoint.
  * 
  * Visitors are a structured blob of binary data. They consist of:
- * 1. SavepointVisitorFlags describing the data.
+ * 1. A u8 of SavepointVisitorFlags describing the data.
  * 2. A SavepointVersion representing the user's application build version.
- * 3. A SavepointVersion representing the Savepoint build version (reserved for future use).
- * 4. A u32 type hash identifying the type of the object.
- * 5. The object data.
- *
- * When writing, we store the current build versions. When reading, we load the
- * versions used in the previous write. By comparing these versions to the build
- * versions, we can determine what members are safe to deserialize.
+ * 3. A u32 type hash identifying the type of the object.
+ * 4. The object data.
  * 
  * @snippet examples/4_nested_types.cpp 4_nested_types
  */
@@ -184,10 +179,8 @@ public:
         State.Reader = {};
         State.Data.clear();
         State.Offset = 0;
-        SavepointVersion savepointVersion = kSavepointVersion;
         operator()(State.Flags);
         operator()(State.Version);
-        operator()(savepointVersion);
         operator()(State.TypeID);
         State.DebugClear();
         operator()(item);
@@ -277,24 +270,12 @@ private:
         State.Reader = State.Data;
         State.Offset = 0;
         State.DebugClear();
-        using VisitorFlags = typename SavepointPortableTypeConverter<SavepointVisitorFlags>::Type;
-        if (sizeof(VisitorFlags) > State.Data.size())
+        operator()(State.Flags);
+        if (HasError())
         {
-            SavepointLog("Tried to read past visitor flags");
-            SetError();
             return;
         }
-
-        // The endianness has to be captured before all reads (include state.Flags)
-        const uint8_t* flags = State.Reader.data();
-        if ((flags[sizeof(VisitorFlags) - 1] & std::to_underlying(SavepointVisitorFlags::BigEndian)) != 0)
-        {
-            State.Flags = SavepointVisitorFlags::BigEndian;
-        }
-
-        operator()(State.Flags);
         operator()(State.Version);
-        Skip<uint32_t>(); // kSavepointVersion
         operator()(State.TypeID);
         State.DebugClear();
     }
@@ -474,7 +455,7 @@ private:
 
     // Helper for SavepointVisitor::Visit and free Visit functions
     template<typename T, typename... Args>
-    bool TryVisit(T& item, SavepointVersion version = {}, Args&&... args)
+    [[nodiscard]] bool TryVisit(T& item, SavepointVersion version = {}, Args&&... args)
     {
         if (IsReading())
         {
@@ -615,6 +596,21 @@ public:
     }
 
     /**
+     * @brief Handle a removed element.
+     *
+     * @tparam T The type to skip.
+     * @param version The version the element was removed in.
+     */
+    template<typename T>
+    void Skip(SavepointVersion version)
+    {
+        if (State.Version < version)
+        {
+            Skip<T>();
+        }
+    }
+
+    /**
      * @brief Disable reading and writing.
      * 
      * If a serialization error is detected, you can use SetError to disable a read or write on the Savepoint.
@@ -654,7 +650,7 @@ public:
      * @return True if an error is set.
      * @see SetError
      */
-    bool HasError() const
+    [[nodiscard]] bool HasError() const
     {
         return State.Error;
     }
@@ -664,7 +660,7 @@ public:
      * 
      * @return True if the visitor is reading.
      */
-    bool IsReading() const
+    [[nodiscard]] bool IsReading() const
     {
         return State.Mode == VisitorMode::Reading;
     }
@@ -674,7 +670,7 @@ public:
      * 
      * @return True if the visitor is writing.
      */
-    bool IsWriting() const
+    [[nodiscard]] bool IsWriting() const
     {
         return State.Mode == VisitorMode::Writing;
     }
@@ -684,7 +680,7 @@ public:
      * 
      * @return The application version.
      */
-    SavepointVersion GetVersion() const
+    [[nodiscard]] SavepointVersion GetVersion() const
     {
         return State.Version;
     }
@@ -694,7 +690,7 @@ public:
      *
      * @return The endianness.
      */
-    std::endian GetEndianness() const
+    [[nodiscard]] std::endian GetEndianness() const
     {
         if ((std::to_underlying(State.Flags) & std::to_underlying(SavepointVisitorFlags::BigEndian)) != 0)
         {
@@ -712,7 +708,7 @@ public:
      * @return The type ID.
      * @see SavepointTypeID
      */
-    uint32_t GetTypeID() const
+    [[nodiscard]] uint32_t GetTypeID() const
     {
         return State.TypeID;
     }
@@ -728,7 +724,7 @@ public:
       * @return The debug nodes.
       * @see SavepointTypeID
       */
-    const std::vector<SavepointDebugNode>& GetDebugNodes()
+    [[nodiscard]] const std::vector<SavepointDebugNode>& GetDebugNodes()
     {
         if (SavepointDebugFunction function = SavepointGetDebugFunction(State.TypeID))
         {
@@ -831,7 +827,7 @@ public:
      * 
      * @return The number of bytes.
      */
-    int GetSize() const
+    [[nodiscard]] int GetSize() const
     {
         if (HasError())
         {
@@ -852,7 +848,7 @@ public:
      * 
      * @return True if no remaining bytes.
      */
-    bool IsEmpty()
+    [[nodiscard]] bool IsEmpty()
     {
         return GetSize() == 0;
     }
@@ -862,7 +858,7 @@ public:
      * 
      * @return The data as bytes.
      */
-    const void* GetData() const
+    [[nodiscard]] const void* GetData() const
     {
         return State.Data.data();
     }

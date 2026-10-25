@@ -69,15 +69,14 @@ concept SavepointIsUniquePointer = SavepointIsUniquePointerImpl<T>::value;
 
 // std::shared_ptr
 template<typename T>
-struct SavepointIsSharedPointerImpl : std::false_type {};
-template<typename T>
-struct SavepointIsSharedPointerImpl<std::shared_ptr<T>> : std::true_type {};
-template<typename T>
-concept SavepointIsSharedPointer = SavepointIsSharedPointerImpl<T>::value;
+void Visit(SavepointVisitor& visitor, std::shared_ptr<T>& item)
+{
+    static_assert(sizeof(T) == 0, "std::shared_ptr is unsupported");
+}
 
-// std::unique_ptr/std::shared_ptr
+// std::unique_ptr
 template<typename T>
-concept SavepointIsStdPointer = SavepointIsUniquePointer<T> || SavepointIsSharedPointer<T>;
+concept SavepointIsStdPointer = SavepointIsUniquePointer<T>;
 template<SavepointIsStdPointer T>
 void Visit(SavepointVisitor& visitor, T& item);
 

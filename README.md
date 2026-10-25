@@ -14,6 +14,10 @@ Inspired by [cereal](https://github.com/USCiLab/cereal) and built on databases l
 - Backtraces
 - Integrated visual debugger
 
+### Limitations
+
+- `std::shared_ptr` is unsupported (see [references](examples/23_references.cpp))
+
 ### Examples
 
 You can find all examples [here](examples)
@@ -64,6 +68,7 @@ int main()
     savepoint.Read<Entity>([&](Entity& outEntity)
     {
         assert(outEntity == inEntity);
+        return true;
     }, 0);
 
     savepoint.Close();

@@ -64,6 +64,7 @@ int main()
     {
         ASSERT(outTile == inTiles[x][y]);
         reads++;
+        return true;
     }, 0);
     ASSERT(reads == 32 * 32);
 
@@ -76,6 +77,21 @@ int main()
         ASSERT(tile.Y == y);
         ASSERT(tile.Z == 0);
     }
+
+    // Read a region (inclusive)
+    reads = 0;
+    savepoint.Read<Tile>([&](Tile& outTile, int x, int y)
+    {
+        ASSERT(x >= 2 && x <= 4);
+        ASSERT(y >= 3 && y <= 5);
+        reads++;
+        return true;
+    }, 2, 3, 4, 5, 0);
+    ASSERT(reads == 9);
+    ASSERT(savepoint.GetTile2DCount(0) == 32 * 32);
+    ASSERT(savepoint.Contains(0, 0, 0));
+    ASSERT(savepoint.Delete(0, 0, 0));
+    ASSERT(!savepoint.Contains(0, 0, 0));
 
     Tile overwritten{TileTypeStone, 10, 20, 0};
     savepoint.Write(overwritten, 10, 20, 0);
@@ -103,8 +119,19 @@ int main()
         ASSERT(outTile.Y == y);
         ASSERT(outTile.Z == z);
         reads++;
+        return true;
     }, 0);
     ASSERT(reads == 8 * 8 * 8);
+
+    // Return false to stop reading early
+    reads = 0;
+    savepoint.Read<Tile>([&](Tile& outTile, int x, int y, int z)
+    {
+        reads++;
+        return false;
+    }, 0, 0, 0, 1, 1, 1, 0);
+    ASSERT(reads == 1);
+
     ASSERT(savepoint.Read(tile, 1, 2, 3, 0));
     Tile expected{TileTypeGrass, 1, 2, 3};
     ASSERT(tile == expected);

@@ -42,10 +42,7 @@ struct Entity : SavepointEntity
     std::optional<int> NullOptional;
     std::unique_ptr<int> UniquePtr;
     std::unique_ptr<int> NullUniquePtr;
-    std::shared_ptr<int> SharedPtr;
-    std::shared_ptr<int> NullSharedPtr;
     std::vector<std::unique_ptr<int>> UniquePtrVector;
-    std::vector<std::shared_ptr<int>> SharedPtrVector;
     std::list<int> List;
     std::string String;
     std::vector<std::unique_ptr<int>> VectorUniquePtr;
@@ -75,14 +72,9 @@ struct Entity : SavepointEntity
         NullOptional = {};
         UniquePtr = std::make_unique<int>(1);
         NullUniquePtr = {};
-        SharedPtr = std::make_shared<int>(1);
-        NullSharedPtr = {};
         UniquePtrVector.emplace_back(std::make_unique<int>(1));
         UniquePtrVector.emplace_back(std::make_unique<int>(3));
         UniquePtrVector.emplace_back(std::make_unique<int>(2));
-        SharedPtrVector.emplace_back(std::make_shared<int>(1));
-        SharedPtrVector.emplace_back(std::make_shared<int>(3));
-        SharedPtrVector.emplace_back(std::make_shared<int>(2));
         List = {1, 2};
         String = "string";
         VectorUniquePtr.emplace_back(std::make_unique<int>(1));
@@ -113,10 +105,7 @@ struct Entity : SavepointEntity
         visitor(NullOptional);
         visitor(UniquePtr);
         visitor(NullUniquePtr);
-        visitor(SharedPtr);
-        visitor(NullSharedPtr);
         visitor(UniquePtrVector);
-        visitor(SharedPtrVector);
         visitor(List);
         visitor(String);
         visitor(VectorUniquePtr);
@@ -148,14 +137,9 @@ struct Entity : SavepointEntity
             bool(NullOptional) == bool(other.NullOptional) &&
             *UniquePtr == *other.UniquePtr &&
             bool(NullUniquePtr) == bool(other.NullUniquePtr) &&
-            *SharedPtr == *other.SharedPtr &&
-            bool(NullSharedPtr) == bool(other.NullSharedPtr) &&
             *UniquePtrVector[0] == *other.UniquePtrVector[0] &&
             *UniquePtrVector[1] == *other.UniquePtrVector[1] &&
             *UniquePtrVector[2] == *other.UniquePtrVector[2] &&
-            *SharedPtrVector[0] == *other.SharedPtrVector[0] &&
-            *SharedPtrVector[1] == *other.SharedPtrVector[1] &&
-            *SharedPtrVector[2] == *other.SharedPtrVector[2] &&
             List == other.List &&
             String == other.String &&
             *VectorUniquePtr[0] == *other.VectorUniquePtr[0] &&
@@ -184,6 +168,7 @@ int main()
     {
         ASSERT(outEntity == inEntity);
         reads++;
+        return true;
     }, 0);
     ASSERT(reads == 1);
 

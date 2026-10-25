@@ -271,7 +271,6 @@ struct ZombieV3 : EntityV2
 
 struct ZombieV4 : EntityV4
 {
-    float Speed = 1.0f;
     float VelocityX = 2.0f;
     float VelocityY = 3.0f;
     float VelocityZ = 4.0f;
@@ -279,7 +278,7 @@ struct ZombieV4 : EntityV4
     void Visit(SavepointVisitor& visitor)
     {
         EntityV4::Visit(visitor);
-        visitor(Speed);
+        visitor.Skip<float>(kVersion4); // Speed removed in 1.1.0
         visitor(VelocityX, kVersion2);
         visitor(VelocityY, kVersion3);
         visitor(VelocityZ, kVersion3);
@@ -288,7 +287,6 @@ struct ZombieV4 : EntityV4
     bool operator==(const ZombieV1& other) const
     {
         return EntityV4::operator==(other) &&
-            Speed == other.Speed &&
             VelocityX == 2.0f &&
             VelocityY == 3.0f &&
             VelocityZ == 4.0f;
@@ -297,7 +295,6 @@ struct ZombieV4 : EntityV4
     bool operator==(const ZombieV2& other) const
     {
         return EntityV4::operator==(other) &&
-            Speed == other.Speed &&
             VelocityX == other.VelocityX &&
             VelocityY == 3.0f &&
             VelocityZ == 4.0f;
@@ -306,7 +303,6 @@ struct ZombieV4 : EntityV4
     bool operator==(const ZombieV3& other) const
     {
         return EntityV4::operator==(other) &&
-            Speed == other.Speed &&
             VelocityX == other.VelocityX &&
             VelocityY == other.VelocityY &&
             VelocityZ == other.VelocityZ;
@@ -315,7 +311,6 @@ struct ZombieV4 : EntityV4
     bool operator==(const ZombieV4& other) const
     {
         return EntityV4::operator==(other) &&
-            Speed == other.Speed &&
             VelocityX == other.VelocityX &&
             VelocityY == other.VelocityY &&
             VelocityZ == other.VelocityZ;
@@ -332,7 +327,7 @@ template<> struct SavepointTypeName<ZombieV3> { static constexpr std::string_vie
 template<> struct SavepointTypeName<ZombieV4> { static constexpr std::string_view kValue = "Zombie"; };
 
 template<typename InT, typename OutT = InT>
-static void ReadWrite(std::string_view name, SavepointVersion version)
+static void ReadWrite(SavepointVersion version)
 {
     Savepoint savepoint;
     SavepointStatus status = savepoint.Open("savepoint.sqlite3", version);
@@ -344,6 +339,7 @@ static void ReadWrite(std::string_view name, SavepointVersion version)
     {
         ASSERT(outEntity == inEntity);
         reads++;
+        return true;
     }, 0);
     ASSERT(reads == 1);
     savepoint.Clear();
@@ -354,22 +350,22 @@ int main()
 {
     std::filesystem::remove("savepoint.sqlite3");
 
-    ReadWrite<EntityV1>("upgrading_entity_v1", kVersion1);
-    ReadWrite<EntityV1, EntityV2>("upgrading_entity_v1_v2", kVersion1);
-    ReadWrite<EntityV1, EntityV4>("upgrading_entity_v1_v4", kVersion1);
-    ReadWrite<EntityV2>("upgrading_entity_v2", kVersion2);
-    ReadWrite<EntityV2, EntityV4>("upgrading_entity_v2_v4", kVersion2);
-    ReadWrite<EntityV4>("upgrading_entity_v4", kVersion4);
-    ReadWrite<ZombieV1>("upgrading_zombie_v1", kVersion1);
-    ReadWrite<ZombieV1, ZombieV2>("upgrading_zombie_v1_v2", kVersion1);
-    ReadWrite<ZombieV1, ZombieV3>("upgrading_zombie_v1_v3", kVersion1);
-    ReadWrite<ZombieV1, ZombieV4>("upgrading_zombie_v1_v4", kVersion1);
-    ReadWrite<ZombieV2>("upgrading_zombie_v2", kVersion2);
-    ReadWrite<ZombieV2, ZombieV3>("upgrading_zombie_v2_v3", kVersion2);
-    ReadWrite<ZombieV2, ZombieV4>("upgrading_zombie_v2_v4", kVersion2);
-    ReadWrite<ZombieV3>("upgrading_zombie_v3", kVersion3);
-    ReadWrite<ZombieV3, ZombieV4>("upgrading_zombie_v3_v4", kVersion3);
-    ReadWrite<ZombieV4>("upgrading_zombie_v4", kVersion4);
+    ReadWrite<EntityV1>(kVersion1);
+    ReadWrite<EntityV1, EntityV2>(kVersion1);
+    ReadWrite<EntityV1, EntityV4>(kVersion1);
+    ReadWrite<EntityV2>(kVersion2);
+    ReadWrite<EntityV2, EntityV4>(kVersion2);
+    ReadWrite<EntityV4>(kVersion4);
+    ReadWrite<ZombieV1>(kVersion1);
+    ReadWrite<ZombieV1, ZombieV2>(kVersion1);
+    ReadWrite<ZombieV1, ZombieV3>(kVersion1);
+    ReadWrite<ZombieV1, ZombieV4>(kVersion1);
+    ReadWrite<ZombieV2>(kVersion2);
+    ReadWrite<ZombieV2, ZombieV3>(kVersion2);
+    ReadWrite<ZombieV2, ZombieV4>(kVersion2);
+    ReadWrite<ZombieV3>(kVersion3);
+    ReadWrite<ZombieV3, ZombieV4>(kVersion3);
+    ReadWrite<ZombieV4>(kVersion4);
     return 0;
 }
 // [10_upgrading]

@@ -38,12 +38,12 @@ bool SavepointDriverNull::Write(const void* data, int size, int level)
     return true;
 }
 
-int64_t SavepointDriverNull::Insert(const void* data, int size, int level)
+int64_t SavepointDriverNull::Reserve()
 {
     return ID.fetch_add(1);
 }
 
-bool SavepointDriverNull::Update(const void* data, int size, int64_t id, int level)
+bool SavepointDriverNull::Write(const void* data, int size, int64_t id, int level)
 {
     return true;
 }

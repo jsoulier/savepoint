@@ -2,6 +2,7 @@
 #include <savepoint/savepoint.hpp>
 
 #include <filesystem>
+#include <utility>
 
 #include "assert.hpp"
 
@@ -69,8 +70,14 @@ int main()
     {
         ASSERT(outEntity == inEntity);
         reads++;
+        return true;
     }, 0);
     ASSERT(reads == 1);
+
+    // Or read a single entity by its ID
+    Entity outEntity;
+    ASSERT(savepoint.Read(outEntity, inEntity.GetID()));
+    ASSERT(outEntity == inEntity);
 
     // Commit the transaction and start a new one. Savepoint::Open will now return Existing instead of New
     savepoint.Save();

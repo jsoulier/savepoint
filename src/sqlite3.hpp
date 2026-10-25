@@ -23,8 +23,8 @@ public:
     bool IsOpen() override;
     bool Write(const void* data, int size) override;
     bool Write(const void* data, int size, int level) override;
-    int64_t Insert(const void* data, int size, int level) override;
-    bool Update(const void* data, int size, int64_t id, int level) override;
+    int64_t Reserve() override;
+    bool Write(const void* data, int size, int64_t id, int level) override;
     bool Write(const void* data, int size, int x, int y, int level) override;
     bool Write(const void* data, int size, int x, int y, int z, int level) override;
     void Read(const SavepointReadDataFunction& function) override;
@@ -59,11 +59,11 @@ public:
 private:
     SavepointMutex Mutex;
     sqlite3* Handle;
+    int64_t ID;
     sqlite3_stmt* WriteStatusStmt;
     sqlite3_stmt* WriteStmt;
     sqlite3_stmt* WriteLevelStmt;
-    sqlite3_stmt* InsertEntityStmt;
-    sqlite3_stmt* UpdateEntityStmt;
+    sqlite3_stmt* WriteEntityStmt;
     sqlite3_stmt* WriteTile2DStmt;
     sqlite3_stmt* WriteTile3DStmt;
     sqlite3_stmt* ReadStatusStmt;
@@ -96,4 +96,7 @@ private:
     sqlite3_stmt* ClearEntitiesStmt;
     sqlite3_stmt* ClearTiles2DStmt;
     sqlite3_stmt* ClearTiles3DStmt;
+    sqlite3_stmt* ReadSequenceStmt;
+    sqlite3_stmt* UpdateSequenceStmt;
+    sqlite3_stmt* InsertSequenceStmt;
 };

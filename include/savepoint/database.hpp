@@ -31,10 +31,11 @@ using SavepointReadFunction = std::function<void(T& item)>;
  * 
  * @tparam T The type to read.
  * @param item The read item.
+ * @return If true, continue reading.
  * @see SavepointID
  */
 template<typename T>
-using SavepointReadEntityFunction = std::function<void(T& item)>;
+using SavepointReadEntityFunction = std::function<bool(T& item)>;
 
 /**
  * @brief The 2D tile read function signature.
@@ -43,9 +44,10 @@ using SavepointReadEntityFunction = std::function<void(T& item)>;
  * @param item The read item.
  * @param x The x location.
  * @param y The y location.
+ * @return If true, continue reading.
  */
 template<typename T>
-using SavepointReadTile2DFunction = std::function<void(T& item, int x, int y)>;
+using SavepointReadTile2DFunction = std::function<bool(T& item, int x, int y)>;
 
 /**
  * @brief The 3D tile read function signature.
@@ -55,9 +57,10 @@ using SavepointReadTile2DFunction = std::function<void(T& item, int x, int y)>;
  * @param x The x location.
  * @param y The y location.
  * @param z The z location.
+ * @return If true, continue reading.
  */
 template<typename T>
-using SavepointReadTile3DFunction = std::function<void(T& item, int x, int y, int z)>;
+using SavepointReadTile3DFunction = std::function<bool(T& item, int x, int y, int z)>;
 
 #ifdef SAVEPOINT_DEBUGGER
 
@@ -119,14 +122,19 @@ public:
     Savepoint& operator=(const Savepoint& other) = delete;
     
     /**
-     * @brief Deleted move constructor.
+     * @brief Take the connection and close the other.
+     *
+     * @param other The Savepoint to move from.
      */
-    Savepoint(Savepoint&& other) = delete;
-    
+    Savepoint(Savepoint&& other);
+
     /**
-     * @brief Deleted move assignment operator.
+     * @brief Take the connection and close the other.
+     *
+     * @param other The Savepoint to move from.
+     * @return This Savepoint.
      */
-    Savepoint& operator=(Savepoint&& other) = delete;
+    Savepoint& operator=(Savepoint&& other);
 
     /**
      * @brief Opens a new connection.
@@ -217,15 +225,16 @@ public:
      * @brief Write an entity to the Savepoint.
      *
      * For items without a unique location, an ID can be used to ensure the item
-     * gets a unique entry. If the ID is invalid, the ID will be written to and
+     * gets a unique entry. If the ID is invalid, a new ID will be reserved and
      * a new entry will be inserted. If the ID is valid, an existing entry will
-     * be updated (including the level).
+     * be updated (including the level) or inserted with that ID.
      *
      * @tparam T The type to write.
      * @param item The item to write.
      * @param level The level.
      * @return True if the entity was written.
      * @see SavepointEntity
+     * @see Reserve
      */
     template<SavepointIsEntity T>
     bool Write(T& item, int level)
@@ -252,20 +261,40 @@ public:
         }
         if (!id.IsValid())
         {
-            // Not an error. Inserting a new entry
-            id.Value = Driver->Insert(visitor.GetData(), visitor.GetSize(), level);
+            // Not an error. New entities get a new ID
+            id.Value = Driver->Reserve();
         }
-        else if (!Driver->Update(visitor.GetData(), visitor.GetSize(), id.Value, level))
+        if (!Driver->Write(visitor.GetData(), visitor.GetSize(), id.Value, level))
         {
-            // Update failed so try inserting
-            id.Value = Driver->Insert(visitor.GetData(), visitor.GetSize(), level);
-        }
-        if (!id.IsValid())
-        {
-            SavepointLog(std::format("Failed to write entity: level={}", level));
+            SavepointLog(std::format("Failed to write entity: id={}, level={}", id.Value, level));
             return false;
         }
         return true;
+    }
+
+    /**
+     * @brief Give an entity an ID without writing it.
+     *
+     * @tparam T The type to reserve.
+     * @param item The item to give an ID.
+     * @return True if the entity has an ID.
+     * @see SavepointEntity
+     */
+    template<SavepointIsEntity T>
+    bool Reserve(T& item)
+    {
+        SAVEPOINT_PROFILE_SCOPE();
+        SavepointID& id = GetID(item);
+        if (id.IsValid())
+        {
+            return true;
+        }
+        if (!CanWrite())
+        {
+            return false;
+        }
+        id.Value = Driver->Reserve();
+        return id.IsValid();
     }
 
     /**
@@ -453,10 +482,10 @@ public:
             if (visitor.HasError())
             {
                 SavepointLog(std::format("Failed to read entity: id={}, level={}", id, level));
-                return;
+                return true;
             }
             GetID(item).Value = id;
-            function(item);
+            return function(item);
         }, level);
     }
 
@@ -483,9 +512,9 @@ public:
             if (visitor.HasError())
             {
                 SavepointLog(std::format("Failed to read tile: x={}, y={}, level={}", x, y, level));
-                return;
+                return true;
             }
-            function(item, x, y);
+            return function(item, x, y);
         }, level);
     }
 
@@ -512,9 +541,9 @@ public:
             if (visitor.HasError())
             {
                 SavepointLog(std::format("Failed to read tile: x={}, y={}, z={}, level={}", x, y, z, level));
-                return;
+                return true;
             }
-            function(item, x, y, z);
+            return function(item, x, y, z);
         }, level);
     }
 
@@ -545,9 +574,9 @@ public:
             if (visitor.HasError())
             {
                 SavepointLog(std::format("Failed to read tile: x={}, y={}, level={}", x, y, level));
-                return;
+                return true;
             }
-            function(item, x, y);
+            return function(item, x, y);
         }, level, minX, minY, maxX, maxY);
     }
 
@@ -580,9 +609,9 @@ public:
             if (visitor.HasError())
             {
                 SavepointLog(std::format("Failed to read tile: x={}, y={}, z={}, level={}", x, y, z, level));
-                return;
+                return true;
             }
-            function(item, x, y, z);
+            return function(item, x, y, z);
         }, level, minX, minY, minZ, maxX, maxY, maxZ);
     }
 
@@ -658,20 +687,7 @@ public:
      * 
      * @return The levels.
      */
-    [[nodiscard]] std::vector<int> GetLevels()
-    {
-        SAVEPOINT_PROFILE_SCOPE();
-        if (!CanRead())
-        {
-            return {};
-        }
-        std::vector<int> levels;
-        Driver->Read([&levels](int level)
-        {
-            levels.push_back(level);
-        });
-        return levels;
-    }
+    [[nodiscard]] std::vector<int> GetLevels();
 
     /**
      * @brief Check if an entity exists in the Savepoint.
@@ -821,25 +837,18 @@ public:
     bool Save();
 
     /**
-     * @brief Discard all pending changes since the last Savepoint::Save.
+     * @brief Discard all pending changes since the last save.
      *
-     * Objects that were read or written keep their current values. Entity IDs
-     * assigned since the last save are no longer valid. If the write lock was
-     * lost (see Save), Rollback tries to take it again.
-     *
-     * @return True if the changes were discarded.
+     * @return True if the rollback was completed.
      * @see Save
      */
     bool Rollback();
 
     /**
-     * @brief Copy the last saved state to another file.
+     * @brief Create a backup of the last save.
      *
-     * Pending changes aren't included. Useful for autosaves and copying save
-     * slots. The destination is overwritten.
-     *
-     * @param path The path to the destination file.
-     * @return True if the copy was written.
+     * @param path The path to the backup file.
+     * @return True if the backup was created.
      * @see Save
      */
     bool Backup(const std::string& path);
@@ -859,14 +868,7 @@ public:
      * @param nodes The debug nodes.
      * @return True if the singleton exists.
      */
-    bool ReadDebug(std::vector<SavepointDebugNode>& nodes)
-    {
-        SAVEPOINT_PROFILE_SCOPE();
-        return ReadDebugInternal(nodes, [this](const SavepointReadDataFunction& function)
-        {
-            Driver->Read(function);
-        });
-    }
+    bool ReadDebug(std::vector<SavepointDebugNode>& nodes);
 
     /**
      * @brief Read the singleton's debug nodes for a specific level.
@@ -875,14 +877,7 @@ public:
      * @param level The level.
      * @return True if the singleton exists.
      */
-    bool ReadDebug(std::vector<SavepointDebugNode>& nodes, int level)
-    {
-        SAVEPOINT_PROFILE_SCOPE();
-        return ReadDebugInternal(nodes, [this, level](const SavepointReadDataFunction& function)
-        {
-            Driver->Read(function, level);
-        });
-    }
+    bool ReadDebug(std::vector<SavepointDebugNode>& nodes, int level);
 
     /**
      * @brief Read all entity debug nodes for a specific level.
@@ -890,20 +885,7 @@ public:
      * @param function The function to use.
      * @param level The level.
      */
-    void ReadDebug(const SavepointDebugEntityFunction& function, int level)
-    {
-        SAVEPOINT_PROFILE_SCOPE();
-        if (!CanRead())
-        {
-            return;
-        }
-        SavepointVisitor visitor;
-        Driver->Read([&visitor, &function](const void* data, int size, int64_t id)
-        {
-            visitor.Begin(data, size);
-            function(visitor.GetDebugNodes(), SavepointID{id});
-        }, level);
-    }
+    void ReadDebug(const SavepointDebugEntityFunction& function, int level);
 
     /**
      * @brief Read all 2D tile debug nodes for a specific level.
@@ -911,20 +893,7 @@ public:
      * @param function The function to use.
      * @param level The level.
      */
-    void ReadDebug(const SavepointDebugTile2DFunction& function, int level)
-    {
-        SAVEPOINT_PROFILE_SCOPE();
-        if (!CanRead())
-        {
-            return;
-        }
-        SavepointVisitor visitor;
-        Driver->Read([&visitor, &function](const void* data, int size, int x, int y)
-        {
-            visitor.Begin(data, size);
-            function(visitor.GetDebugNodes(), x, y);
-        }, level);
-    }
+    void ReadDebug(const SavepointDebugTile2DFunction& function, int level);
 
     /**
      * @brief Read all 3D tile debug nodes for a specific level.
@@ -932,44 +901,13 @@ public:
      * @param function The function to use.
      * @param level The level.
      */
-    void ReadDebug(const SavepointDebugTile3DFunction& function, int level)
-    {
-        SAVEPOINT_PROFILE_SCOPE();
-        if (!CanRead())
-        {
-            return;
-        }
-        SavepointVisitor visitor;
-        Driver->Read([&visitor, &function](const void* data, int size, int x, int y, int z)
-        {
-            visitor.Begin(data, size);
-            function(visitor.GetDebugNodes(), x, y, z);
-        }, level);
-    }
+    void ReadDebug(const SavepointDebugTile3DFunction& function, int level);
 
-private:
-    template<typename T>
-    bool ReadDebugInternal(std::vector<SavepointDebugNode>& nodes, const T& read)
-    {
-        if (!CanRead())
-        {
-            return false;
-        }
-        SavepointVisitor visitor;
-        bool success = false;
-        read([&visitor, &nodes, &success](const void* data, int size)
-        {
-            visitor.Begin(data, size);
-            nodes = visitor.GetDebugNodes();
-            success = true;
-        });
-        return success;
-    }
 #endif
 
 private:
-    bool CanRead() const;
-    bool CanWrite() const;
+    [[nodiscard]] bool CanRead() const;
+    [[nodiscard]] bool CanWrite() const;
 
     // TODO: Bad hack 
     template<SavepointIsEntity T>

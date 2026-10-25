@@ -64,6 +64,7 @@ int main()
     savepoint.Read<Entity>([&](Entity& outEntity)
     {
         ASSERT(outEntity == inEntity);
+        return true;
     }, 0);
 
     savepoint.Close();

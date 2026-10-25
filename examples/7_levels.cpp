@@ -19,6 +19,16 @@ struct Tile
     void Visit(SavepointVisitor& visitor) {}
 };
 
+struct Level
+{
+    int Seed = 0;
+
+    void Visit(SavepointVisitor& visitor)
+    {
+        visitor(Seed);
+    }
+};
+
 int main()
 {
     std::filesystem::remove("savepoint.sqlite3");
@@ -63,6 +73,19 @@ int main()
     outLevels = savepoint.GetLevels();
     std::sort(outLevels.begin(), outLevels.end());
     ASSERT(outLevels == inLevels);
+
+    // Each level can also hold a singleton (e.g. level settings)
+    Level inLevel;
+    inLevel.Seed = 42;
+    ASSERT(savepoint.Write(inLevel, 5));
+    Level outLevel;
+    ASSERT(savepoint.Read(outLevel, 5));
+    ASSERT(outLevel.Seed == 42);
+
+    // Delete everything in a level (singleton, entities, and tiles)
+    ASSERT(savepoint.DeleteLevel(5));
+    ASSERT(!savepoint.Read(outLevel, 5));
+    ASSERT(savepoint.GetTile2DCount(5) == 0);
 
     savepoint.Close();
     return 0;

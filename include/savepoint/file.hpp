@@ -8,6 +8,7 @@
 #include <format>
 #include <fstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 
@@ -16,6 +17,8 @@
  */
 class SavepointFile
 {
+    static constexpr std::string_view kTmpSuffix = ".tmp";
+
 public:
     /**
      * @brief Create a Savepoint file.
@@ -23,8 +26,28 @@ public:
      * @param path The file to read or write.
      */
     explicit SavepointFile(std::string path = {})
-        : Path{std::move(path)}
+        : Path{std::move(path) + std::string{kTmpSuffix}}
     {
+    }
+
+    /**
+     * @brief Get the path to the file.
+     *
+     * @return The path.
+     */
+    std::string_view GetPath() const
+    {
+        return std::string_view{Path}.substr(0, Path.size() - kTmpSuffix.size());
+    }
+
+    /**
+     * @brief Get the path to the temporary file used while writing.
+     *
+     * @return The temporary path.
+     */
+    std::string_view GetTmpPath() const
+    {
+        return Path;
     }
 
     /**
@@ -37,7 +60,7 @@ public:
     template<typename T>
     bool TryRead(T& item) const
     {
-        std::ifstream stream{Path, std::ios::binary};
+        std::ifstream stream{std::filesystem::path{GetPath()}, std::ios::binary};
         if (!stream)
         {
             return false;
@@ -61,7 +84,7 @@ public:
      * @return True if the object was successfully serialized and written.
      */
     template<typename T>
-    bool Write(T& item, SavepointVersion version) const
+    bool Write(T& item, SavepointVersion version = {}) const
     {
         SavepointVisitor visitor;
         visitor.Begin(item, version);
@@ -69,22 +92,18 @@ public:
         {
             return false;
         }
-        std::string path = Path + ".tmp";
-        std::ofstream stream{path, std::ios::binary | std::ios::trunc};
-        stream << visitor;
-        stream.close();
         std::error_code error;
-        if (!stream)
+        if (!Write(visitor.GetData(), visitor.GetSize()))
         {
-            SavepointLog(std::format("Failed to write file: {}", path));
-            std::filesystem::remove(path, error);
+            SavepointLog(std::format("Failed to write file: {}", GetTmpPath()));
+            std::filesystem::remove(GetTmpPath(), error);
             return false;
         }
-        std::filesystem::rename(path, Path, error);
+        std::filesystem::rename(GetTmpPath(), GetPath(), error);
         if (error)
         {
-            SavepointLog(std::format("Failed to replace file: {}, {}", Path, error.message()));
-            std::filesystem::remove(path, error);
+            SavepointLog(std::format("Failed to replace file: {}, {}", GetPath(), error.message()));
+            std::filesystem::remove(GetTmpPath(), error);
             return false;
         }
         return true;
@@ -97,9 +116,12 @@ public:
      */
     bool Delete() const
     {
-        return std::filesystem::remove(Path);
+        return std::filesystem::remove(GetPath());
     }
 
 private:
+    // Avoid corruptions by syncing the write (only if sqlite3 is available)
+    bool Write(const void* data, int size) const;
+
     std::string Path;
 };

@@ -10,6 +10,7 @@ option(SAVEPOINT_VALIDATION "Enable non-portable type validation" OFF)
 add_library(savepoint
     src/database.cpp
     src/debug.cpp
+    src/file.cpp
     src/id.cpp
     src/stream.cpp
     src/log.cpp
@@ -88,9 +89,9 @@ if(PROJECT_IS_TOP_LEVEL)
     savepoint_example(17_concurrency)
     savepoint_example(19_stream)
     savepoint_example(20_file)
-    savepoint_example(21_queries)
-    savepoint_example(22_backup)
-    savepoint_example(23_rollback)
+    savepoint_example(21_backup)
+    savepoint_example(22_rollback)
+    savepoint_example(23_references)
     if(SAVEPOINT_DEBUGGER)
         savepoint_app(13_asteroids)
         savepoint_app(18_debugger)

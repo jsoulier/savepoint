@@ -20,7 +20,7 @@
 #include <variant>
 
 /**
- * @brief Visit implementation for serializing std::unique_ptr and std::shared_ptr.
+ * @brief Visit implementation for serializing std::unique_ptr.
  *
  * Pointers data and whether they are null are serialized. As such, pointers are
  * allowed to be nullptr and will be handled accordingly. Polymorphics are also

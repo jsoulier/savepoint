@@ -77,7 +77,7 @@ struct EntityInventory
 };
 
 // Entity consists of several complex types:
-// |-> std::shared_ptr<Inventory>
+// |-> std::unique_ptr<Inventory>
 //   |-> std::vector<Items>
 //     |-> Count
 //     |-> Durability
@@ -87,12 +87,12 @@ struct EntityInventory
 //   |-> Y
 struct Entity : SavepointEntity
 {
-    std::shared_ptr<EntityInventory> Inventory;
+    std::unique_ptr<EntityInventory> Inventory;
     std::unordered_set<Effect> Effects;
     Vector2 Position;
 
     Entity()
-        : Inventory{std::make_shared<EntityInventory>()}
+        : Inventory{std::make_unique<EntityInventory>()}
         , Effects{EffectStrength, EffectSlowness}
         , Position{100, 200}
     {
@@ -125,6 +125,7 @@ int main()
     savepoint.Read<Entity>([&](Entity& outEntity)
     {
         ASSERT(outEntity == inEntity);
+        return true;
     }, 0);
 
     savepoint.Close();

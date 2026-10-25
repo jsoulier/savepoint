@@ -23,7 +23,7 @@ static_assert(SavepointIsPointer<const void*>);
 static_assert(SavepointIsPointer<void const*>);
 static_assert(SavepointIsPointer<const void* const>);
 static_assert(!SavepointIsPointer<int>);
-static_assert(SavepointIsPointer<std::shared_ptr<int>>);
+static_assert(!SavepointIsPointer<std::shared_ptr<int>>); // std::shared_ptr is unsupported
 static_assert(SavepointIsPointer<std::unique_ptr<int>>);
 
 struct NoVisit {};

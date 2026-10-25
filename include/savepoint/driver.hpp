@@ -63,9 +63,9 @@ constexpr SavepointFlags operator&(SavepointFlags lhs, SavepointFlags rhs)
 /** @cond INTERNAL */
 
 using SavepointReadDataFunction = std::function<void(const void* data, int size)>;
-using SavepointReadAllEntityDataFunction = std::function<void(const void* data, int size, int64_t id)>;
-using SavepointReadAllTile2DDataFunction = std::function<void(const void* data, int size, int x, int y)>;
-using SavepointReadAllTile3DDataFunction = std::function<void(const void* data, int size, int x, int y, int z)>;
+using SavepointReadAllEntityDataFunction = std::function<bool(const void* data, int size, int64_t id)>;
+using SavepointReadAllTile2DDataFunction = std::function<bool(const void* data, int size, int x, int y)>;
+using SavepointReadAllTile3DDataFunction = std::function<bool(const void* data, int size, int x, int y, int z)>;
 using SavepointReadTile2DDataFunction = std::function<void(const void* data, int size)>;
 using SavepointReadTile3DDataFunction = std::function<void(const void* data, int size)>;
 using SavepointReadAllLevelsFunction = std::function<void(int level)>;
@@ -79,8 +79,8 @@ public:
     virtual bool IsOpen() = 0;
     virtual bool Write(const void* data, int size) = 0;
     virtual bool Write(const void* data, int size, int level) = 0;
-    virtual int64_t Insert(const void* data, int size, int level) = 0;
-    virtual bool Update(const void* data, int size, int64_t id, int level) = 0;
+    virtual int64_t Reserve() = 0;
+    virtual bool Write(const void* data, int size, int64_t id, int level) = 0;
     virtual bool Write(const void* data, int size, int x, int y, int level) = 0;
     virtual bool Write(const void* data, int size, int x, int y, int z, int level) = 0;
     virtual void Read(const SavepointReadDataFunction& function) = 0;

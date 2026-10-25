@@ -142,10 +142,10 @@ int main()
     ASSERT(status == SavepointStatus::New);
 
     // Write concrete derived classes as usual
-    std::shared_ptr<ItemEntity> inItem = std::make_shared<ItemEntity>();
-    std::shared_ptr<ZombieEntity> inZombie = std::make_shared<ZombieEntity>();
-    std::shared_ptr<SkeletonEntity> inSkeleton = std::make_shared<SkeletonEntity>();
-    std::shared_ptr<SpiderEntity> inSpider = std::make_shared<SpiderEntity>();
+    std::unique_ptr<ItemEntity> inItem = std::make_unique<ItemEntity>();
+    std::unique_ptr<ZombieEntity> inZombie = std::make_unique<ZombieEntity>();
+    std::unique_ptr<SkeletonEntity> inSkeleton = std::make_unique<SkeletonEntity>();
+    std::unique_ptr<SpiderEntity> inSpider = std::make_unique<SpiderEntity>();
     savepoint.Write(inItem, 0);
     savepoint.Write(inZombie, 0);
     savepoint.Write(inSkeleton, 0);
@@ -153,7 +153,7 @@ int main()
 
     // Read using your base class' class name
     int reads = 0;
-    savepoint.Read<std::shared_ptr<Entity>>([&](std::shared_ptr<Entity>& entity)
+    savepoint.Read<std::unique_ptr<Entity>>([&](std::unique_ptr<Entity>& entity)
     {
         // The concrete type is restored, so the base pointer can safely be cast back
         if (ItemEntity* outItem = dynamic_cast<ItemEntity*>(entity.get()))
@@ -177,17 +177,18 @@ int main()
             ASSERT(false);
         }
         reads++;
+        return true;
     }, 0);
     ASSERT(reads == 4);
 
-    std::shared_ptr<Forest::BatEntity> inForestBat = std::make_shared<Forest::BatEntity>();
-    std::shared_ptr<Cave::BatEntity> inCaveBat = std::make_shared<Cave::BatEntity>();
+    std::unique_ptr<Forest::BatEntity> inForestBat = std::make_unique<Forest::BatEntity>();
+    std::unique_ptr<Cave::BatEntity> inCaveBat = std::make_unique<Cave::BatEntity>();
     ASSERT(inForestBat->GetClassName() != inCaveBat->GetClassName());
     savepoint.Write(inForestBat, 1);
     savepoint.Write(inCaveBat, 1);
     int forestBats = 0;
     int caveBats = 0;
-    savepoint.Read<std::shared_ptr<Entity>>([&](std::shared_ptr<Entity>& entity)
+    savepoint.Read<std::unique_ptr<Entity>>([&](std::unique_ptr<Entity>& entity)
     {
         if (dynamic_cast<Forest::BatEntity*>(entity.get()))
         {
@@ -198,6 +199,7 @@ int main()
             ASSERT(outCaveBat->Blind);
             caveBats++;
         }
+        return true;
     }, 1);
     ASSERT(forestBats == 1);
     ASSERT(caveBats == 1);

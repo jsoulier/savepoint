@@ -21,10 +21,25 @@ Savepoint::Savepoint()
 
 Savepoint::~Savepoint()
 {
-    if (Driver && Driver->IsOpen())
+    Close();
+}
+
+Savepoint::Savepoint(Savepoint&& other)
+    : Savepoint()
+{
+    *this = std::move(other);
+}
+
+Savepoint& Savepoint::operator=(Savepoint&& other)
+{
+    if (this != &other)
     {
         Close();
+        Version = std::exchange(other.Version, SavepointVersion{});
+        Flags = std::exchange(other.Flags, SavepointFlags::None);
+        Driver = std::move(other.Driver);
     }
+    return *this;
 }
 
 SavepointStatus Savepoint::Open(const std::string& path, SavepointVersion version, SavepointFlags flags)
@@ -80,6 +95,21 @@ std::string_view Savepoint::GetDriverName() const
         return Driver->GetName();
     }
     return "";
+}
+
+std::vector<int> Savepoint::GetLevels()
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    if (!CanRead())
+    {
+        return {};
+    }
+    std::vector<int> levels;
+    Driver->Read([&levels](int level)
+    {
+        levels.push_back(level);
+    });
+    return levels;
 }
 
 bool Savepoint::Contains(SavepointID id)
@@ -251,6 +281,94 @@ bool Savepoint::Clear()
     }
     return Driver->Clear();
 }
+
+#ifdef SAVEPOINT_DEBUGGER
+
+bool Savepoint::ReadDebug(std::vector<SavepointDebugNode>& nodes)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    if (!CanRead())
+    {
+        return false;
+    }
+    SavepointVisitor visitor;
+    bool success = false;
+    Driver->Read([&visitor, &nodes, &success](const void* data, int size)
+    {
+        visitor.Begin(data, size);
+        nodes = visitor.GetDebugNodes();
+        success = true;
+    });
+    return success;
+}
+
+bool Savepoint::ReadDebug(std::vector<SavepointDebugNode>& nodes, int level)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    if (!CanRead())
+    {
+        return false;
+    }
+    SavepointVisitor visitor;
+    bool success = false;
+    Driver->Read([&visitor, &nodes, &success](const void* data, int size)
+    {
+        visitor.Begin(data, size);
+        nodes = visitor.GetDebugNodes();
+        success = true;
+    }, level);
+    return success;
+}
+
+void Savepoint::ReadDebug(const SavepointDebugEntityFunction& function, int level)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    if (!CanRead())
+    {
+        return;
+    }
+    SavepointVisitor visitor;
+    Driver->Read([&visitor, &function](const void* data, int size, int64_t id)
+    {
+        visitor.Begin(data, size);
+        function(visitor.GetDebugNodes(), SavepointID{id});
+        return true;
+    }, level);
+}
+
+void Savepoint::ReadDebug(const SavepointDebugTile2DFunction& function, int level)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    if (!CanRead())
+    {
+        return;
+    }
+    SavepointVisitor visitor;
+    Driver->Read([&visitor, &function](const void* data, int size, int x, int y)
+    {
+        visitor.Begin(data, size);
+        function(visitor.GetDebugNodes(), x, y);
+        return true;
+    }, level);
+}
+
+void Savepoint::ReadDebug(const SavepointDebugTile3DFunction& function, int level)
+{
+    SAVEPOINT_PROFILE_SCOPE();
+    if (!CanRead())
+    {
+        return;
+    }
+    SavepointVisitor visitor;
+    Driver->Read([&visitor, &function](const void* data, int size, int x, int y, int z)
+    {
+        visitor.Begin(data, size);
+        function(visitor.GetDebugNodes(), x, y, z);
+        return true;
+    }, level);
+}
+
+#endif
 
 bool Savepoint::CanRead() const
 {

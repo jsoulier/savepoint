@@ -18,8 +18,8 @@ public:
     bool IsOpen() override;
     bool Write(const void* data, int size) override;
     bool Write(const void* data, int size, int level) override;
-    int64_t Insert(const void* data, int size, int level) override;
-    bool Update(const void* data, int size, int64_t id, int level) override;
+    int64_t Reserve() override;
+    bool Write(const void* data, int size, int64_t id, int level) override;
     bool Write(const void* data, int size, int x, int y, int level) override;
     bool Write(const void* data, int size, int x, int y, int z, int level) override;
     void Read(const SavepointReadDataFunction& function) override;

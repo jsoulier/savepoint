@@ -15,6 +15,7 @@
 
 static constexpr int kSavepointBusyTimeout = 16; // 16ms
 
+// TODO: Consider compressing blobs with the compress/uncompress extension 
 static constexpr const char* kSQL =
     "CREATE TABLE IF NOT EXISTS status ("
     "    id INTEGER PRIMARY KEY"
@@ -37,19 +38,17 @@ static constexpr const char* kSQL =
     "    y INTEGER NOT NULL,"
     "    level INTEGER NOT NULL,"
     "    data BLOB NOT NULL,"
-    "    PRIMARY KEY (x, y, level)"
-    ");"
+    "    PRIMARY KEY (level, x, y)"
+    ") WITHOUT ROWID;"
     "CREATE TABLE IF NOT EXISTS tiles_3d ("
     "    x INTEGER NOT NULL,"
     "    y INTEGER NOT NULL,"
     "    z INTEGER NOT NULL,"
     "    level INTEGER NOT NULL,"
     "    data BLOB NOT NULL,"
-    "    PRIMARY KEY (x, y, z, level)"
-    ");"
+    "    PRIMARY KEY (level, x, y, z)"
+    ") WITHOUT ROWID;"
     "CREATE INDEX IF NOT EXISTS entities_index ON entities (level);"
-    "CREATE INDEX IF NOT EXISTS tiles_2d_index ON tiles_2d (level, x, y);"
-    "CREATE INDEX IF NOT EXISTS tiles_3d_index ON tiles_3d (level, x, y, z);"
     " ";
 static constexpr const char* kWriteStatusSQL =
     "INSERT OR REPLACE INTO status (id) VALUES (0);";
@@ -57,10 +56,8 @@ static constexpr const char* kWriteSQL =
     "INSERT OR REPLACE INTO header (id, data) VALUES (0, ?);";
 static constexpr const char* kWriteLevelSQL =
     "INSERT OR REPLACE INTO levels (level, data) VALUES (?, ?);";
-static constexpr const char* kInsertEntitySQL =
-    "INSERT INTO entities (level, data) VALUES (?, ?);";
-static constexpr const char* kUpdateEntitySQL =
-    "UPDATE entities SET level = ?, data = ? WHERE id = ?;";
+static constexpr const char* kWriteEntitySQL =
+    "INSERT INTO entities (id, level, data) VALUES (?, ?, ?) ON CONFLICT (id) DO UPDATE SET level = excluded.level, data = excluded.data;";
 static constexpr const char* kWriteTile2DSQL =
     "INSERT OR REPLACE INTO tiles_2d (x, y, level, data) VALUES (?, ?, ?, ?);";
 static constexpr const char* kWriteTile3DSQL =
@@ -126,6 +123,14 @@ static constexpr const char* kClearTiles2DSQL =
 static constexpr const char* kClearTiles3DSQL =
     "DELETE FROM tiles_3d;";
 
+// see 2.6.3. the sqlite_sequence table in https://www.sqlite.org/fileformat2.html
+static constexpr const char* kReadSequenceSQL =
+    "SELECT seq FROM sqlite_sequence WHERE name = 'entities';";
+static constexpr const char* kUpdateSequenceSQL =
+    "UPDATE sqlite_sequence SET seq = max(seq, ?) WHERE name = 'entities';";
+static constexpr const char* kInsertSequenceSQL =
+    "INSERT INTO sqlite_sequence (name, seq) SELECT 'entities', ? WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'entities');";
+
 static std::vector<uint8_t> GetData(sqlite3_stmt* stmt, int column)
 {
     // Required so that we don't clobber a statement if the user queries it recursively
@@ -138,11 +143,11 @@ SavepointDriverSQLite3::SavepointDriverSQLite3()
     : ISavepointDriver()
     , Mutex{}
     , Handle{nullptr}
+    , ID{SavepointID::kInvalidID}
     , WriteStatusStmt{nullptr}
     , WriteStmt{nullptr}
     , WriteLevelStmt{nullptr}
-    , InsertEntityStmt{nullptr}
-    , UpdateEntityStmt{nullptr}
+    , WriteEntityStmt{nullptr}
     , WriteTile2DStmt{nullptr}
     , WriteTile3DStmt{nullptr}
     , ReadStatusStmt{nullptr}
@@ -175,6 +180,9 @@ SavepointDriverSQLite3::SavepointDriverSQLite3()
     , ClearEntitiesStmt{nullptr}
     , ClearTiles2DStmt{nullptr}
     , ClearTiles3DStmt{nullptr}
+    , ReadSequenceStmt{nullptr}
+    , UpdateSequenceStmt{nullptr}
+    , InsertSequenceStmt{nullptr}
 {
 }
 
@@ -246,14 +254,9 @@ SavepointStatus SavepointDriverSQLite3::Open(const std::string& path, SavepointF
         SavepointLog(std::format("Failed to prepare kWriteLevelSQL: {}", sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
     }
-    if (sqlite3_prepare_v2(Handle, kInsertEntitySQL, -1, &InsertEntityStmt, nullptr) != SQLITE_OK)
+    if (sqlite3_prepare_v2(Handle, kWriteEntitySQL, -1, &WriteEntityStmt, nullptr) != SQLITE_OK)
     {
-        SavepointLog(std::format("Failed to prepare kInsertEntitySQL: {}", sqlite3_errmsg(Handle)));
-        return SavepointStatus::Failed;
-    }
-    if (sqlite3_prepare_v2(Handle, kUpdateEntitySQL, -1, &UpdateEntityStmt, nullptr) != SQLITE_OK)
-    {
-        SavepointLog(std::format("Failed to prepare kUpdateEntitySQL: {}", sqlite3_errmsg(Handle)));
+        SavepointLog(std::format("Failed to prepare kWriteEntitySQL: {}", sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
     }
     if (sqlite3_prepare_v2(Handle, kWriteTile2DSQL, -1, &WriteTile2DStmt, nullptr) != SQLITE_OK)
@@ -416,6 +419,27 @@ SavepointStatus SavepointDriverSQLite3::Open(const std::string& path, SavepointF
         SavepointLog(std::format("Failed to prepare kClearTiles3DSQL: {}", sqlite3_errmsg(Handle)));
         return SavepointStatus::Failed;
     }
+    if (sqlite3_prepare_v2(Handle, kReadSequenceSQL, -1, &ReadSequenceStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kReadSequenceSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kUpdateSequenceSQL, -1, &UpdateSequenceStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kUpdateSequenceSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    if (sqlite3_prepare_v2(Handle, kInsertSequenceSQL, -1, &InsertSequenceStmt, nullptr) != SQLITE_OK)
+    {
+        SavepointLog(std::format("Failed to prepare kInsertSequenceSQL: {}", sqlite3_errmsg(Handle)));
+        return SavepointStatus::Failed;
+    }
+    ID = SavepointID::kInvalidID;
+    if (sqlite3_step(ReadSequenceStmt) == SQLITE_ROW)
+    {
+        ID = sqlite3_column_int64(ReadSequenceStmt, 0);
+    }
+    sqlite3_reset(ReadSequenceStmt);
     SavepointStatus status;
     if (sqlite3_step(ReadStatusStmt) == SQLITE_ROW)
     {
@@ -472,42 +496,33 @@ bool SavepointDriverSQLite3::Write(const void* data, int size, int level)
     return success;
 }
 
-int64_t SavepointDriverSQLite3::Insert(const void* data, int size, int level)
+int64_t SavepointDriverSQLite3::Reserve()
 {
     SAVEPOINT_PROFILE_SCOPE();
     std::scoped_lock lock{Mutex};
-    int64_t id = SavepointID::kInvalidID;
-    sqlite3_bind_int(InsertEntityStmt, 1, level);
-    sqlite3_bind_blob(InsertEntityStmt, 2, data, size, SQLITE_STATIC);
-    if (sqlite3_step(InsertEntityStmt) != SQLITE_DONE)
-    {
-        SavepointLog(std::format("Failed to insert entity: {}", sqlite3_errmsg(Handle)));
-    }
-    else
-    {
-        id = sqlite3_last_insert_rowid(Handle);
-    }
-    sqlite3_reset(InsertEntityStmt);
-    return id;
+    ID++;
+    return ID;
 }
 
-bool SavepointDriverSQLite3::Update(const void* data, int size, int64_t id, int level)
+bool SavepointDriverSQLite3::Write(const void* data, int size, int64_t id, int level)
 {
     SAVEPOINT_PROFILE_SCOPE();
     std::scoped_lock lock{Mutex};
-    bool success = false;
-    sqlite3_bind_int(UpdateEntityStmt, 1, level);
-    sqlite3_bind_blob(UpdateEntityStmt, 2, data, size, SQLITE_STATIC);
-    sqlite3_bind_int64(UpdateEntityStmt, 3, id);
-    if (sqlite3_step(UpdateEntityStmt) != SQLITE_DONE)
+    bool success = true;
+    sqlite3_bind_int64(WriteEntityStmt, 1, id);
+    sqlite3_bind_int(WriteEntityStmt, 2, level);
+    sqlite3_bind_blob(WriteEntityStmt, 3, data, size, SQLITE_STATIC);
+    if (sqlite3_step(WriteEntityStmt) != SQLITE_DONE)
     {
-        SavepointLog(std::format("Failed to update entity: {}", sqlite3_errmsg(Handle)));
+        SavepointLog(std::format("Failed to write entity: {}", sqlite3_errmsg(Handle)));
+        success = false;
     }
-    else
+    else if (id > ID)
     {
-        success = sqlite3_changes(Handle) > 0;
+        // Technically a bug but there's no good way to handle it so we'll avoid clobbering the row
+        ID = id;
     }
-    sqlite3_reset(UpdateEntityStmt);
+    sqlite3_reset(WriteEntityStmt);
     return success;
 }
 
@@ -604,7 +619,10 @@ void SavepointDriverSQLite3::Read(const SavepointReadAllEntityDataFunction& func
     sqlite3_reset(ReadEntitiesStmt);
     for (Row& row : rows)
     {
-        function(row.Data.data(), row.Data.size(), row.Id);
+        if (!function(row.Data.data(), row.Data.size(), row.Id))
+        {
+            break;
+        }
     }
 }
 
@@ -631,7 +649,10 @@ void SavepointDriverSQLite3::Read(const SavepointReadAllTile2DDataFunction& func
     sqlite3_reset(ReadAllTiles2DStmt);
     for (Row& row : rows)
     {
-        function(row.Data.data(), row.Data.size(), row.X, row.Y);
+        if (!function(row.Data.data(), row.Data.size(), row.X, row.Y))
+        {
+            break;
+        }
     }
 }
 
@@ -660,7 +681,10 @@ void SavepointDriverSQLite3::Read(const SavepointReadAllTile3DDataFunction& func
     sqlite3_reset(ReadAllTiles3DStmt);
     for (Row& row : rows)
     {
-        function(row.Data.data(), row.Data.size(), row.X, row.Y, row.Z);
+        if (!function(row.Data.data(), row.Data.size(), row.X, row.Y, row.Z))
+        {
+            break;
+        }
     }
 }
 
@@ -748,7 +772,10 @@ void SavepointDriverSQLite3::Read(const SavepointReadAllTile2DDataFunction& func
     sqlite3_reset(ReadRegionTiles2DStmt);
     for (Row& row : rows)
     {
-        function(row.Data.data(), row.Data.size(), row.X, row.Y);
+        if (!function(row.Data.data(), row.Data.size(), row.X, row.Y))
+        {
+            break;
+        }
     }
 }
 
@@ -783,7 +810,10 @@ void SavepointDriverSQLite3::Read(const SavepointReadAllTile3DDataFunction& func
     sqlite3_reset(ReadRegionTiles3DStmt);
     for (Row& row : rows)
     {
-        function(row.Data.data(), row.Data.size(), row.X, row.Y, row.Z);
+        if (!function(row.Data.data(), row.Data.size(), row.X, row.Y, row.Z))
+        {
+            break;
+        }
     }
 }
 
@@ -1051,8 +1081,7 @@ bool SavepointDriverSQLite3::Close()
     sqlite3_finalize(WriteStatusStmt);
     sqlite3_finalize(WriteStmt);
     sqlite3_finalize(WriteLevelStmt);
-    sqlite3_finalize(InsertEntityStmt);
-    sqlite3_finalize(UpdateEntityStmt);
+    sqlite3_finalize(WriteEntityStmt);
     sqlite3_finalize(WriteTile2DStmt);
     sqlite3_finalize(WriteTile3DStmt);
     sqlite3_finalize(ReadStatusStmt);
@@ -1085,6 +1114,9 @@ bool SavepointDriverSQLite3::Close()
     sqlite3_finalize(ClearEntitiesStmt);
     sqlite3_finalize(ClearTiles2DStmt);
     sqlite3_finalize(ClearTiles3DStmt);
+    sqlite3_finalize(ReadSequenceStmt);
+    sqlite3_finalize(UpdateSequenceStmt);
+    sqlite3_finalize(InsertSequenceStmt);
     bool success = true;
     if (sqlite3_close(Handle) != SQLITE_OK)
     {
@@ -1106,6 +1138,24 @@ bool SavepointDriverSQLite3::Save()
         success = false;
     }
     sqlite3_reset(WriteStatusStmt);
+    if (!success)
+    {
+        return false;
+    }
+    sqlite3_bind_int64(InsertSequenceStmt, 1, ID);
+    if (sqlite3_step(InsertSequenceStmt) != SQLITE_DONE)
+    {
+        SavepointLog(std::format("Failed to insert sequence: {}", sqlite3_errmsg(Handle)));
+        success = false;
+    }
+    sqlite3_reset(InsertSequenceStmt);
+    sqlite3_bind_int64(UpdateSequenceStmt, 1, ID);
+    if (sqlite3_step(UpdateSequenceStmt) != SQLITE_DONE)
+    {
+        SavepointLog(std::format("Failed to update sequence: {}", sqlite3_errmsg(Handle)));
+        success = false;
+    }
+    sqlite3_reset(UpdateSequenceStmt);
     if (!success)
     {
         return false;
