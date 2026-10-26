@@ -19,12 +19,55 @@
 static constexpr int kWidth = 960;
 static constexpr int kHeight = 720;
 
-static glm::vec2 Direction(float rotation);
-static void Wrap(glm::vec2& position);
-static glm::vec2 Offset(glm::vec2 a, glm::vec2 b);
 static float RandomFloat();
 static int RandomInt();
 static void Lines(const std::vector<glm::vec2>& points, glm::vec2 position, float rotation);
+
+static glm::vec2 Direction(float rotation)
+{
+    return {std::cos(rotation), std::sin(rotation)};
+}
+
+static float WrapAxis(float value, float size)
+{
+    if (value < 0.0f)
+    {
+        value += size;
+    }
+    if (value >= size)
+    {
+        value -= size;
+    }
+    return value;
+}
+
+static void Wrap(glm::vec2& position)
+{
+    position.x = WrapAxis(position.x, kWidth);
+    position.y = WrapAxis(position.y, kHeight);
+}
+
+static float OffsetAxis(float a, float b, float size)
+{
+    float offset = a - b;
+    if (offset > size * 0.5f)
+    {
+        offset -= size;
+    }
+    if (offset < -size * 0.5f)
+    {
+        offset += size;
+    }
+    return offset;
+}
+
+static glm::vec2 Offset(glm::vec2 a, glm::vec2 b)
+{
+    glm::vec2 offset;
+    offset.x = OffsetAxis(a.x, b.x, kWidth);
+    offset.y = OffsetAxis(a.y, b.y, kHeight);
+    return offset;
+}
 
 void Visit(SavepointVisitor& visitor, glm::vec2& vector)
 {
@@ -34,8 +77,8 @@ void Visit(SavepointVisitor& visitor, glm::vec2& vector)
 
 struct Entity
 {
-    glm::vec2 Position;
-    glm::vec2 Velocity;
+    glm::vec2 Position = glm::vec2{0};
+    glm::vec2 Velocity = glm::vec2{0};
 
     void Visit(SavepointVisitor& visitor)
     {
@@ -44,7 +87,7 @@ struct Entity
     }
 };
 
-struct Bullet : Entity
+struct BulletEntity : Entity
 {
     float Life = 0.0f;
 
@@ -69,7 +112,7 @@ struct Bullet : Entity
     }
 };
 
-struct Player : Entity
+struct PlayerEntity : Entity
 {
     float Rotation = -std::numbers::pi_v<float> * 0.5f;
     float ShotTimer = 0.0f;
@@ -77,9 +120,9 @@ struct Player : Entity
     float Radius = 9.0f;
     int Lives = 3;
     bool IsAccelerating = false;
-    std::vector<Bullet> Bullets;
+    std::vector<BulletEntity> Bullets;
 
-    Player()
+    PlayerEntity()
     {
         Position = {kWidth * 0.5f, kHeight * 0.5f};
     }
@@ -91,7 +134,7 @@ struct Player : Entity
             return;
         }
         glm::vec2 direction = Direction(Rotation);
-        Bullet bullet;
+        BulletEntity bullet;
         bullet.Position = Position + direction * 14.0f;
         bullet.Velocity = Velocity + direction * 390.0f;
         bullet.Life = 1.2f;
@@ -121,11 +164,14 @@ struct Player : Entity
         Wrap(Position);
         ShotTimer = std::max(0.0f, ShotTimer - deltaTime);
         InvincibilityTimer = std::max(0.0f, InvincibilityTimer - deltaTime);
-        for (Bullet& bullet : Bullets)
+        for (BulletEntity& bullet : Bullets)
         {
             bullet.Update(deltaTime);
         }
-        std::erase_if(Bullets, [](const Bullet& bullet) { return bullet.Life <= 0.0f; });
+        std::erase_if(Bullets, [](const BulletEntity& bullet)
+        {
+            return bullet.Life <= 0.0f;
+        });
     }
 
     void Destroy()
@@ -160,7 +206,7 @@ struct Player : Entity
     }
 };
 
-struct Asteroid : Entity
+struct AsteroidEntity : Entity
 {
     float Radius = 40.0f;
     float Rotation = 0.0f;
@@ -185,7 +231,7 @@ struct Asteroid : Entity
         Wrap(Position);
     }
 
-    int Split(std::vector<Asteroid>& asteroids) const
+    int Split(std::vector<AsteroidEntity>& asteroids) const
     {
         if (Radius <= 20.0f)
         {
@@ -194,7 +240,14 @@ struct Asteroid : Entity
         float radius = Radius * 0.56f;
         asteroids.emplace_back().Spawn(Position, radius);
         asteroids.emplace_back().Spawn(Position, radius);
-        return Radius > 30.0f ? 20 : 50;
+        if (Radius > 30.0f)
+        {
+            return 20;
+        }
+        else
+        {
+            return 50;
+        }
     }
 
     void Draw() const
@@ -223,8 +276,8 @@ struct Asteroid : Entity
 struct State
 {
     std::minstd_rand Generator;
-    Player User;
-    std::vector<Asteroid> Asteroids;
+    PlayerEntity Player;
+    std::vector<AsteroidEntity> Asteroids;
     int Score = 0;
     int Round = 0;
     
@@ -237,7 +290,7 @@ struct State
     {
         Round++;
         Asteroids.clear();
-        User.Bullets.clear();
+        Player.Bullets.clear();
         int count = std::min(10, Round + 3);
         for (int i = 0; i < count; i++)
         {
@@ -246,15 +299,15 @@ struct State
             {
                 position = {RandomFloat() * kWidth, RandomFloat() * kHeight};
             }
-            while (glm::length(Offset(position, User.Position)) < 180.0f);
-            Asteroid& asteroid = Asteroids.emplace_back();
+            while (glm::length(Offset(position, Player.Position)) < 180.0f);
+            AsteroidEntity& asteroid = Asteroids.emplace_back();
             asteroid.Spawn(position, 42.0f);
         }
     }
 
     void Visit(SavepointVisitor& visitor)
     {
-        visitor(User);
+        visitor(Player);
         visitor(Generator);
         visitor(Score);
         visitor(Round);
@@ -269,77 +322,6 @@ static State state;
 static SavepointDebugger debugger;
 static bool showDebugger = false;
 
-static void Wrap(glm::vec2& position)
-{
-    if (position.x < 0.0f)
-    {
-        position.x += kWidth;
-    }
-    if (position.x >= kWidth)
-    {
-        position.x -= kWidth;
-    }
-    if (position.y < 0.0f)
-    {
-        position.y += kHeight;
-    }
-    if (position.y >= kHeight)
-    {
-        position.y -= kHeight;
-    }
-}
-
-static glm::vec2 Offset(glm::vec2 a, glm::vec2 b)
-{
-    glm::vec2 offset = a - b;
-    if (offset.x > kWidth / 2)
-    {
-        offset.x -= kWidth;
-    }
-    if (offset.x < -kWidth / 2)
-    {
-        offset.x += kWidth;
-    }
-    if (offset.y > kHeight / 2)
-    {
-        offset.y -= kHeight;
-    }
-    if (offset.y < -kHeight / 2)
-    {
-        offset.y += kHeight;
-    }
-    return offset;
-}
-
-static glm::vec2 Direction(float rotation)
-{
-    return {std::cos(rotation), std::sin(rotation)};
-}
-
-static float RandomFloat()
-{
-    return std::generate_canonical<float, 24>(state.Generator);
-}
-
-static int RandomInt()
-{
-    return state.Generator();
-}
-
-static void Lines(const std::vector<glm::vec2>& points, glm::vec2 position, float rotation)
-{
-    float c = std::cos(rotation);
-    float s = std::sin(rotation);
-    glm::mat2 rotationMatrix{{c, s}, {-s, c}};
-    SDL_SetRenderDrawColor(renderer, 210, 227, 225, 255);
-    for (size_t i = 0; i < points.size(); i++)
-    {
-        glm::vec2 a = rotationMatrix * points[i] + position;
-        glm::vec2 b = rotationMatrix * points[(i + 1) % points.size()] + position;
-        SDL_RenderLine(renderer, a.x, a.y, b.x, b.y);
-    }
-}
-
 static void Text(float x, float y, std::string text, float size)
 {
     SDL_SetRenderDrawColor(renderer, 220, 235, 232, 255);
@@ -353,34 +335,39 @@ static void CenteredText(float y, std::string text, float size)
     Text((kWidth - text.size() * 8.0f * size) * 0.5f, y, text, size);
 }
 
-static void Restart()
+static void Lines(const std::vector<glm::vec2>& points, glm::vec2 position, float rotation)
 {
-    state = {};
-    state.Spawn();
+    float c = std::cos(rotation);
+    float s = std::sin(rotation);
+    glm::mat2 matrix{{c, s}, {-s, c}};
+    SDL_SetRenderDrawColor(renderer, 210, 227, 225, 255);
+    for (size_t i = 0; i < points.size(); i++)
+    {
+        glm::vec2 a = matrix * points[i] + position;
+        glm::vec2 b = matrix * points[(i + 1) % points.size()] + position;
+        SDL_RenderLine(renderer, a.x, a.y, b.x, b.y);
+    }
 }
 
-static void Save()
+static float RandomFloat()
 {
-    savepoint.Write(state);
-    savepoint.Save();
-    debugger.Refresh();
+    return std::generate_canonical<float, 24>(state.Generator);
 }
 
-static void Load()
+static int RandomInt()
 {
-    savepoint.Read(state);
-    debugger.Refresh();
+    return state.Generator();
 }
 
 static void Update(float deltaTime)
 {
-    Player& player = state.User;
+    PlayerEntity& player = state.Player;
     if (player.Lives == 0)
     {
         return;
     }
     player.Update(deltaTime);
-    for (Asteroid& asteroid : state.Asteroids)
+    for (AsteroidEntity& asteroid : state.Asteroids)
     {
         asteroid.Update(deltaTime);
     }
@@ -393,7 +380,7 @@ static void Update(float deltaTime)
             if (glm::length(offset) < state.Asteroids[asteroid].Radius)
             {
                 player.Bullets.erase(player.Bullets.begin() + bullet);
-                Asteroid hitAsteroid = state.Asteroids[asteroid];
+                AsteroidEntity hitAsteroid = state.Asteroids[asteroid];
                 state.Asteroids.erase(state.Asteroids.begin() + asteroid);
                 state.Score += hitAsteroid.Split(state.Asteroids);
                 hit = true;
@@ -407,7 +394,7 @@ static void Update(float deltaTime)
     }
     if (player.InvincibilityTimer == 0.0f)
     {
-        for (const Asteroid& asteroid : state.Asteroids)
+        for (const AsteroidEntity& asteroid : state.Asteroids)
         {
             glm::vec2 offset = Offset(player.Position, asteroid.Position);
             if (glm::length(offset) < asteroid.Radius + player.Radius)
@@ -425,7 +412,7 @@ static void Update(float deltaTime)
 
 static void Draw()
 {
-    const Player& player = state.User;
+    const PlayerEntity& player = state.Player;
     SDL_SetRenderDrawColor(renderer, 2, 7, 11, 255);
     SDL_RenderClear(renderer);
     std::minstd_rand generator{12345};
@@ -435,11 +422,11 @@ static void Draw()
         SDL_SetRenderDrawColor(renderer, 100, 120, 120, 255);
         SDL_RenderPoint(renderer, float(star % kWidth), float((star >> 12) % kHeight));
     }
-    for (const Asteroid& asteroid : state.Asteroids)
+    for (const AsteroidEntity& asteroid : state.Asteroids)
     {
         asteroid.Draw();
     }
-    for (const Bullet& bullet : player.Bullets)
+    for (const BulletEntity& bullet : player.Bullets)
     {
         bullet.Draw(renderer);
     }
@@ -493,10 +480,11 @@ int main(int argc, char** argv)
     switch (savepoint.Open("asteroids.sqlite3", SavepointVersion{}))
     {
     case SavepointStatus::New:
-        Restart();
+        state.Spawn();
         break;
     case SavepointStatus::Existing:
-        Load();
+        savepoint.Read(state);
+        debugger.Refresh();
         break;
     }
     uint64_t ticks1 = SDL_GetTicks();
@@ -516,13 +504,17 @@ int main(int argc, char** argv)
                 switch (event.key.scancode)
                 {
                 case SDL_SCANCODE_N:
-                    Restart();
+                    state = {};
+                    state.Spawn();
                     break;
                 case SDL_SCANCODE_F5:
-                    Save();
+                    savepoint.Write(state);
+                    savepoint.Save();
+                    debugger.Refresh();
                     break;
                 case SDL_SCANCODE_F9:
-                    Load();
+                    savepoint.Read(state);
+                    debugger.Refresh();
                     break;
                 case SDL_SCANCODE_F10:
                     showDebugger = !showDebugger;
@@ -541,7 +533,6 @@ int main(int argc, char** argv)
         }
         SDL_RenderPresent(renderer);
     }
-    Save();
     savepoint.Close();
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
