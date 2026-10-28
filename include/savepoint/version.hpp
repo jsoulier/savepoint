@@ -45,7 +45,7 @@ public:
      * 
      * @return The major version.
      */
-    constexpr uint32_t GetMajor() const
+    [[nodiscard]] constexpr uint32_t GetMajor() const
     {
         return (Value >> 24) & 0xFF;
     }
@@ -55,7 +55,7 @@ public:
      * 
      * @return The minor version.
      */
-    constexpr uint32_t GetMinor() const
+    [[nodiscard]] constexpr uint32_t GetMinor() const
     {
         return (Value >> 16) & 0xFF;
     }
@@ -65,7 +65,7 @@ public:
      * 
      * @return The patch version.
      */
-    constexpr uint32_t GetPatch() const
+    [[nodiscard]] constexpr uint32_t GetPatch() const
     {
         return Value & 0xFFFF;
     }
@@ -75,7 +75,7 @@ public:
      * 
      * @return The version as a string.
      */
-    std::string GetString() const
+    [[nodiscard]] std::string GetString() const
     {
         return std::format("{}.{}.{}", GetMajor(), GetMinor(), GetPatch());
     }
@@ -86,7 +86,7 @@ public:
      * @param other The other version.
      * @return True if the comparison evaluated to true.
      */
-    constexpr auto operator<=>(const SavepointVersion& other) const = default;
+    [[nodiscard]] constexpr auto operator<=>(const SavepointVersion& other) const = default;
 
     /**
      * @brief Serialize the version.
@@ -98,8 +98,3 @@ public:
 private:
     uint32_t Value;
 };
-
-/**
- * @brief The current savepoint version.
- */
-static constexpr SavepointVersion kSavepointVersion{1, 1, 0};

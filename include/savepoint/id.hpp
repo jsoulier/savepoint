@@ -40,14 +40,14 @@ public:
      * @param other The other ID.
      * @return True if the comparison evaluated to true.
      */
-    constexpr auto operator<=>(const SavepointID& other) const = default;
+    [[nodiscard]] constexpr auto operator<=>(const SavepointID& other) const = default;
 
     /**
      * @brief Check if an ID is valid.
      * 
      * @return True if the ID is valid.
      */
-    constexpr bool IsValid() const
+    [[nodiscard]] constexpr bool IsValid() const
     {
         return Value != SavepointID{}.Value;
     }
@@ -57,7 +57,7 @@ public:
      *
      * @return The raw ID value.
      */
-    constexpr int64_t GetValue() const
+    [[nodiscard]] constexpr int64_t GetValue() const
     {
         return Value;
     }
@@ -88,7 +88,7 @@ struct hash<SavepointID>
      * @param id The ID.
      * @return The hash.
      */
-    size_t operator()(const SavepointID& id) const noexcept
+    [[nodiscard]] size_t operator()(const SavepointID& id) const noexcept
     {
         return std::hash<int64_t>{}(id.GetValue());
     }

@@ -29,7 +29,7 @@ public:
      * @see SavepointID
      * @return The unique ID.
      */
-    SavepointID GetID() const
+    [[nodiscard]] SavepointID GetID() const
     {
         return ID;
     }

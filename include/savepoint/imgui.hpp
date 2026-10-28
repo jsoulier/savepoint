@@ -327,7 +327,7 @@ private:
         }
     }
 
-    std::vector<std::string_view> GetKeys() const
+    [[nodiscard]] std::vector<std::string_view> GetKeys() const
     {
         switch (Mode)
         {

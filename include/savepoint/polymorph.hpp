@@ -37,7 +37,7 @@ public:
      * 
      * @return The class name string.
      */
-    virtual std::string_view GetClassName() const = 0;
+    [[nodiscard]] virtual std::string_view GetClassName() const = 0;
 };
 
 /**
@@ -54,7 +54,7 @@ public:
     private: \
         struct SavepointRegistrar \
         { \
-            static SavepointPolymorph* Function() \
+            [[nodiscard]] static SavepointPolymorph* Function() \
             { \
                 return new T(); \
             } \
@@ -65,7 +65,7 @@ public:
         }; \
         static inline SavepointRegistrar SavepointRegistrar; \
     public: \
-        std::string_view GetClassName() const override \
+        [[nodiscard]] std::string_view GetClassName() const override \
         { \
             return #T; \
         } \
@@ -79,9 +79,9 @@ using SavepointPolymorphFunction = SavepointPolymorph*(*)();
 void SavepointAddPolymorphFunction(std::string_view string, const SavepointPolymorphFunction function);
 
 // Get a factory function for polymorph types
-SavepointPolymorphFunction SavepointGetPolymorphFunction(std::string_view string);
+[[nodiscard]] SavepointPolymorphFunction SavepointGetPolymorphFunction(std::string_view string);
 
 // Create a polymorph instance from its class name
-SavepointPolymorph* SavepointCreatePolymorph(std::string_view string);
+[[nodiscard]] SavepointPolymorph* SavepointCreatePolymorph(std::string_view string);
 
 /** @endcond */

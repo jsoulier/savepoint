@@ -29,7 +29,7 @@ public:
      *
      * @return The depth.
      */
-    int GetDepth() const
+    [[nodiscard]] int GetDepth() const
     {
         return Depth;
     }
@@ -39,7 +39,7 @@ public:
      *
      * @return The type name.
      */
-    std::string_view GetTypeName() const
+    [[nodiscard]] std::string_view GetTypeName() const
     {
         return Type;
     }
@@ -49,7 +49,7 @@ public:
      *
      * @return The value.
      */
-    const std::string& GetValue() const
+    [[nodiscard]] const std::string& GetValue() const
     {
         return Value;
     }
@@ -59,7 +59,7 @@ public:
      *
      * @return True if the node has no children.
      */
-    bool GetIsLeaf() const
+    [[nodiscard]] bool GetIsLeaf() const
     {
         return !Value.empty();
     }
@@ -79,10 +79,10 @@ using SavepointDebugFunction = void(*)(SavepointVisitor& visitor);
 void SavepointAddDebugFunction(uint32_t id, std::string_view name, const SavepointDebugFunction function);
 
 // Get a debug function registered to an ID
-SavepointDebugFunction SavepointGetDebugFunction(uint32_t id);
+[[nodiscard]] SavepointDebugFunction SavepointGetDebugFunction(uint32_t id);
 
 // Get the type name registered to an ID
-std::string_view SavepointGetDebugTypeName(uint32_t id);
+[[nodiscard]] std::string_view SavepointGetDebugTypeName(uint32_t id);
 
 // For registering debug functions on instantiation of Savepoint::Read/Write
 template<typename T>

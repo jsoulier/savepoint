@@ -24,7 +24,7 @@
 
 // https://stackoverflow.com/questions/4384765/whats-the-difference-between-pretty-function-function-func
 template<typename T>
-static constexpr std::string_view SavepointFunctionName()
+[[nodiscard]] static constexpr std::string_view SavepointFunctionName()
 {
 #if defined(_MSC_VER)
     return __FUNCSIG__;
@@ -40,7 +40,7 @@ static constexpr size_t kSavepointNameSuffix = SavepointFunctionName<void>().siz
 
 // Try to extract the type name from the function signature
 template<typename T>
-static constexpr std::string_view SavepointTypeNameOf()
+[[nodiscard]] static constexpr std::string_view SavepointTypeNameOf()
 {
     std::string_view name = SavepointFunctionName<T>();
     if (name.empty())
@@ -163,23 +163,6 @@ concept SavepointHasMemberVisit = requires(SavepointVisitor visitor, T item) { {
 template<typename T>
 concept SavepointHasStreamOperators = requires(std::ostream& o, std::istream& i, T& item) { o << item; i >> item; };
 
-// For ensuring compatibility across platforms
-template<typename T>
-struct SavepointPortableTypeConverter
-{
-    using Type = T;
-
-    static Type Write(T value)
-    {
-        return value;
-    }
-
-    static T Read(Type value)
-    {
-        return value;
-    }
-};
-
 // For mapping integral types to a fixed width
 template<typename T>
 struct SavepointFixedWidth
@@ -204,18 +187,35 @@ template<> struct SavepointFixedWidth<unsigned long> { using Type = uint64_t; };
 template<> struct SavepointFixedWidth<long long> { using Type = int64_t; };
 template<> struct SavepointFixedWidth<unsigned long long> { using Type = uint64_t; };
 
+// For ensuring compatibility across platforms
+template<typename T>
+struct SavepointPortableTypeConverter
+{
+    using Type = T;
+
+    [[nodiscard]] static Type Write(T value)
+    {
+        return value;
+    }
+
+    [[nodiscard]] static T Read(Type value)
+    {
+        return value;
+    }
+};
+
 // Integers to their fixed-width equivalent
 template<typename T> requires std::is_integral_v<T>
 struct SavepointPortableTypeConverter<T>
 {
     using Type = typename SavepointFixedWidth<T>::Type;
 
-    static Type Write(T value)
+    [[nodiscard]] static Type Write(T value)
     {
         return Type(value);
     }
 
-    static T Read(Type value)
+    [[nodiscard]] static T Read(Type value)
     {
         return T(value);
     }
@@ -228,12 +228,12 @@ struct SavepointPortableTypeConverter<T>
     using ConverterType = SavepointPortableTypeConverter<std::underlying_type_t<T>>;
     using Type = typename ConverterType::Type;
 
-    static Type Write(T value)
+    [[nodiscard]] static Type Write(T value)
     {
         return ConverterType::Write(std::to_underlying(value));
     }
 
-    static T Read(Type value)
+    [[nodiscard]] static T Read(Type value)
     {
         return T(ConverterType::Read(value));
     }
@@ -261,7 +261,7 @@ template<>
 struct SavepointTypeName<std::string_view> { static constexpr std::string_view kValue = "std::string_view"; };
 
 // https://en.wikipedia.org/wiki/Fowler%E2%80%93Noll%E2%80%93Vo_hash_function
-constexpr uint32_t SavepointTypeNameHash(std::string_view name)
+[[nodiscard]] constexpr uint32_t SavepointTypeNameHash(std::string_view name)
 {
     uint32_t hash = 2166136261u;
     for (char c : name)
@@ -274,7 +274,7 @@ constexpr uint32_t SavepointTypeNameHash(std::string_view name)
 
 // Get the type as a hash
 template<typename T>
-constexpr uint32_t SavepointTypeID()
+[[nodiscard]] constexpr uint32_t SavepointTypeID()
 {
     static constexpr std::string_view name = SavepointTypeName<T>::kValue;
     if constexpr (name.empty())

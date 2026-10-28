@@ -74,7 +74,7 @@ class ISavepointDriver
 {
 public:
     virtual ~ISavepointDriver() = default;
-    virtual std::string_view GetName() const = 0;
+    [[nodiscard]] virtual std::string_view GetName() const = 0;
     virtual SavepointStatus Open(const std::string& path, SavepointFlags flags) = 0;
     virtual bool IsOpen() = 0;
     virtual bool Write(const void* data, int size) = 0;

@@ -35,7 +35,7 @@ public:
      *
      * @return The path.
      */
-    std::string_view GetPath() const
+    [[nodiscard]] std::string_view GetPath() const
     {
         return std::string_view{Path}.substr(0, Path.size() - kTmpSuffix.size());
     }
@@ -45,7 +45,7 @@ public:
      *
      * @return The temporary path.
      */
-    std::string_view GetTmpPath() const
+    [[nodiscard]] std::string_view GetTmpPath() const
     {
         return Path;
     }
