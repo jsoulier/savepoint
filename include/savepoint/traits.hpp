@@ -143,11 +143,11 @@ void Visit(SavepointVisitor& visitor, T& item);
 
 // <ranges>
 template<typename T>
-concept SavepointIsDynamicRange = requires(T item) { item.insert(std::ranges::end(item), std::declval<typename T::value_type>()); };
+concept SavepointIsDynamicRange = requires(T& item) { item.insert(std::ranges::end(item), std::declval<std::ranges::range_value_t<T>>()); };
 template<typename T>
-concept SavepointIsStaticRange = !SavepointIsDynamicRange<T> && requires(T item) { item[0] = std::declval<typename T::value_type>(); };
+concept SavepointIsStaticRange = !SavepointIsDynamicRange<T> && requires(T& item) { item[0]; };
 template<typename T>
-concept SavepointIsResizableRange = requires(T item, int size) { item.resize(size); };
+concept SavepointIsResizableRange = requires(T& item, int size) { item.resize(size); };
 template<std::ranges::range T>
 void Visit(SavepointVisitor& visitor, T& item);
 
@@ -155,9 +155,9 @@ void Visit(SavepointVisitor& visitor, T& item);
 template<typename T>
 concept SavepointIsVisitable = !std::is_same_v<T, SavepointVisitor> && !std::is_base_of_v<SavepointPolymorph, T>;
 template<typename T>
-concept SavepointHasFreeVisit = requires(SavepointVisitor visitor, T item) { { Visit(visitor, item) }; };
+concept SavepointHasFreeVisit = requires(SavepointVisitor& visitor, T& item) { { Visit(visitor, item) }; };
 template<typename T>
-concept SavepointHasMemberVisit = requires(SavepointVisitor visitor, T item) { { item.Visit(visitor) }; };
+concept SavepointHasMemberVisit = requires(SavepointVisitor& visitor, T& item) { { item.Visit(visitor) }; };
 
 // std::istream/std::ostream
 template<typename T>

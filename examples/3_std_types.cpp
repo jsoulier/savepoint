@@ -1,6 +1,7 @@
 // [3_std_types]
 #include <savepoint/savepoint.hpp>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <deque>
@@ -9,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <set>
 #include <string>
 #include <tuple>
@@ -25,6 +27,8 @@ static constexpr SavepointVersion kVersion{0, 0, 0};
 struct Entity : SavepointEntity
 {
     std::array<int, 5> Array;
+    int CArray1D[5];
+    int CArray2D[2][3];
     std::vector<int> Vector;
     std::vector<bool> BoolVector;
     std::deque<int> Deque;
@@ -55,6 +59,10 @@ struct Entity : SavepointEntity
     void OnCreate()
     {
         Array = {1, 2, 3, 4, 5};
+        static constexpr int kCArray1D[5] = {1, 2, 3, 4, 5};
+        static constexpr int kCArray2D[6] = {0, 1, 2, 3, 4, 5};
+        std::ranges::copy(kCArray1D, CArray1D);
+        std::ranges::copy(kCArray2D, &CArray2D[0][0]);
         Vector = {1, 2, 3};
         BoolVector = {true, false, true};
         Deque = {1, 2, 3};
@@ -88,6 +96,8 @@ struct Entity : SavepointEntity
     void Visit(SavepointVisitor& visitor)
     {
         visitor(Array);
+        visitor(CArray1D);
+        visitor(CArray2D);
         visitor(Vector);
         visitor(BoolVector);
         visitor(Deque);
@@ -120,6 +130,8 @@ struct Entity : SavepointEntity
     {
         return
             Array == other.Array &&
+            std::ranges::equal(CArray1D, other.CArray1D) &&
+            std::ranges::equal(std::views::join(CArray2D), std::views::join(other.CArray2D)) &&
             Vector == other.Vector &&
             BoolVector == other.BoolVector &&
             Deque == other.Deque &&

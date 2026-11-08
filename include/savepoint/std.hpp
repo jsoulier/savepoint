@@ -276,8 +276,8 @@ void Visit(SavepointVisitor& visitor, T& item)
 template<std::ranges::range T>
 void Visit(SavepointVisitor& visitor, T& item)
 {
-    using ValueT = typename T::value_type;
-    int size = item.size();
+    using ValueT = std::ranges::range_value_t<T>;
+    int size = std::ranges::size(item);
     if constexpr (SavepointIsDynamicRange<T>)
     {
         if (visitor.IsReading() && size)
