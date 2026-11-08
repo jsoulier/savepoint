@@ -145,7 +145,7 @@ void Visit(SavepointVisitor& visitor, T& item);
 template<typename T>
 concept SavepointIsDynamicRange = requires(T& item) { item.insert(std::ranges::end(item), std::declval<std::ranges::range_value_t<T>>()); };
 template<typename T>
-concept SavepointIsStaticRange = !SavepointIsDynamicRange<T> && requires(T& item) { item[0]; };
+concept SavepointIsStaticRange = !SavepointIsDynamicRange<T> && requires(T& item) { requires !std::is_const_v<std::remove_reference_t<decltype(item[0])>>; };
 template<typename T>
 concept SavepointIsResizableRange = requires(T& item, int size) { item.resize(size); };
 template<std::ranges::range T>

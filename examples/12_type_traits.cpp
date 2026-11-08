@@ -83,6 +83,8 @@ static_assert(SavepointIsDynamicRange<std::string>);
 static_assert(SavepointIsDynamicRange<std::list<int>>);
 
 static_assert(SavepointIsStaticRange<std::array<int, 1>>);
+static_assert(SavepointIsStaticRange<int[1]>);
+static_assert(SavepointIsStaticRange<int[2][3]>);
 static_assert(!SavepointIsStaticRange<std::vector<int>>);
 static_assert(!SavepointIsStaticRange<std::string_view>);
 static_assert(!SavepointIsStaticRange<std::map<int, int>>);
