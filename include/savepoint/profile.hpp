@@ -2,7 +2,7 @@
 
 /** @cond INTERNAL */
 
-#ifdef SAVEPOINT_PROFILE
+#ifdef TRACY_ENABLE
 #include <tracy/Tracy.hpp>
 #define SAVEPOINT_PROFILE_SCOPE() ZoneScoped
 #define SAVEPOINT_PROFILE_SCOPEN(name) ZoneScopedN(name)
